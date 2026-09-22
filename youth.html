@@ -1,0 +1,4006 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover 让全面屏手机的页面延伸到安全区，配合 CSS 里的
+     env(safe-area-inset-*) 把内容推回可视范围。 -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- 固定为浅色：手机开深色模式时，不声明这句表单控件会被系统渲染成深色，与版式冲突。 -->
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#2f6f4e">
+<title>土壤改良方案 · 专家评价器</title>
+<style>
+/* ============================================================
+ * 土壤改良方案 · 专家评价器 —— 界面样式
+ * ------------------------------------------------------------
+ * 设计说明见 界面设计规范.md；配色对比度由
+ * _acceptance/palette-contrast.mjs 逐组合校验（55 项全绿）。
+ *
+ * 三条硬约束，改动时不要破坏：
+ *   ① 类名与 id 是 JS 的契约（is-active / from-image-field /
+ *      need-check / vt-seg / is-open / g-* / lv-* / cf-* /
+ *      L1|L2|L3 / running|done / no-print …），只改样式不改名。
+ *   ② 打印块里必须保留 "#view-report.is-active{display:block"
+ *      这一子串，_acceptance/verify-views.mjs 会按字面匹配。
+ *      （「专家的话」视图已按需求整屏移除。）
+ *   ③ 产物是单文件 HTML，样式不能引用任何外部资源
+ *      （run-ui-smoke.mjs 禁止一切 link 标签与 http(s) 资源）。
+ *      注意：注释里也不要写出带尖括号的 link 二字 ——
+ *      _acceptance/verify-views.mjs 会把注释也算作命中。
+ *
+ * 移动优先：基础样式面向 <576px 的手机，用 min-width 逐级增强。
+ * ============================================================ */
+
+/* ============================================================
+ * 1. 设计 token
+ * ============================================================ */
+:root{
+  /* 品牌绿：土壤 / 农业气质，8 档色阶 */
+  --brand-50:#f2f8f4;  --brand-100:#e8f3ec; --brand-200:#cfe6d8; --brand-300:#a9d1ba;
+  --brand-400:#6fae8b; --brand-500:#2f6f4e; --brand-600:#28603f; --brand-700:#1f4d33;
+  --brand-800:#173c27;
+
+  /* 中性墨色：每一档都过了 AA，500 是最浅的可用正文色 */
+  --ink-900:#141a1f; --ink-800:#1b1f24; --ink-700:#3d4750;
+  --ink-600:#4a5560; --ink-500:#5d6873;
+  --ink-300:#9aa5b1;                     /* 仅限装饰，不承载文字 */
+
+  /* 边框三档：装饰 / 结构 / 承重，别混用 */
+  --line-200:#e3e7ec;                    /* 纯装饰：卡片内分隔、虚线提示 */
+  --line-300:#c2cad3;                    /* 结构：卡片外框、表格格线 */
+  --line-strong:#848d95;                 /* 承重：输入框与次要按钮的唯一识别边界，≥3:1 */
+
+  /* 表面 */
+  --bg-page:#f4f7f5; --surface:#ffffff; --surface-2:#fbfcfc;
+
+  /* 语义色：fg 是对应 bg 上的合规前景；line 是装饰描边
+     info 用青绿而不是海军蓝 —— 页面上已经有一个品牌绿了，
+     再来一个蓝会在第一屏打架；青绿与绿同族，整页只有一种色温。 */
+  --ok:#1f7a4d;       --ok-bg:#e9f6ee;      --ok-line:#a8d8bd;
+  --info:#0c6e80;     --info-bg:#e6f4f6;    --info-line:#a8d3da;   --info-bg-2:#d3eaee;
+  --warn:#8a5f00;     --warn-bg:#fdf3dd;    --warn-line:#e3c98a;
+  --danger:#b3261e;   --danger-bg:#fdeceb;  --danger-line:#eeb3ae;
+  --neutral:#5f6b76;  --neutral-bg:#eef1f4; --neutral-line:#c9d1d9;
+
+  /* 圆角：收敛到一套刻度，别再出现 5/6/7/8/10px 混用 */
+  --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+
+  /* 阴影：极轻，只用来提层次，不做拟物 */
+  --sh-1:0 1px 2px rgba(18,38,28,.05);
+  --sh-2:0 2px 8px rgba(18,38,28,.06), 0 1px 2px rgba(18,38,28,.04);
+  --sh-3:0 12px 32px rgba(18,38,28,.14);
+
+  /* 间距：8px 基线，含 4px 半档 */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px;
+
+  /* 字号刻度 */
+  --fs-2xs:11px; --fs-xs:12px; --fs-sm:13px; --fs-base:15px;
+  --fs-field:16px;                       /* 表单控件专用：低于 16px 时 iOS Safari 会放大整页 */
+  --fs-lg:17px; --fs-xl:20px; --fs-2xl:24px; --fs-3xl:30px;
+
+  /* 行高 */
+  --lh-tight:1.3; --lh-snug:1.55; --lh-base:1.7; --lh-loose:1.9;
+
+  /* 页边距：窄屏更省空间，≥576px 再放宽 */
+  --gutter:16px;
+
+  /* 字体栈独立成变量：将来接字体 CDN 只改这一处 */
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans SC",
+    "Hiragino Sans GB","Microsoft YaHei","Source Han Sans SC","Noto Sans CJK SC",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+@media (min-width:576px){ :root{ --gutter:20px } }
+
+/* ============================================================
+ * 2. 基础
+ * ============================================================ */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+/* color-scheme 固定 light：手机开着深色模式时，不写这句表单控件会被系统渲染成
+   深色，和这套浅色版式直接冲突。 */
+html{color-scheme:light}
+body{
+  background:var(--bg-page);
+  color:var(--ink-800);
+  font:var(--fs-base)/var(--lh-base) var(--font-ui);
+  -webkit-font-smoothing:antialiased;
+}.report,.report-host,.ai-status,.out,.review-card,.settings-body,.gatebar{
+  overflow-wrap:break-word;
+}
+
+/* 焦点可见性 —— WCAG 2.4.7。
+   改之前只有 input:focus{outline:2px solid #e8f3ec}，在白底上对比度 1.14:1，
+   键盘用户根本看不见；按钮则完全没有焦点样式。 */
+:where(a,button,summary,[tabindex]):focus-visible{
+  outline:3px solid var(--brand-500);
+  outline-offset:2px;
+}
+:where(input,select,textarea):focus{
+  border-color:var(--brand-500);
+  box-shadow:0 0 0 3px rgba(47,111,78,.16);
+}
+:where(input,select,textarea):focus-visible{
+  outline:3px solid var(--brand-500);
+  outline-offset:1px;
+}
+
+/* 可交互元素统一手感：只动 transform / 颜色，不触发重排 */
+:where(button,summary,.filebtn,.vt-seg){
+  transition:background-color .2s,border-color .2s,color .2s,transform .15s,box-shadow .2s;
+}
+:where(button):disabled{cursor:not-allowed}
+
+/* ============================================================
+ * 3. 布局骨架
+ * ============================================================ */
+.wrap{
+  width:100%;
+  max-width:1080px;
+  margin:0 auto;
+  padding-left:max(var(--gutter),env(safe-area-inset-left));
+  padding-right:max(var(--gutter),env(safe-area-inset-right));
+}
+/* 一律写 minmax(0,1fr) 而不是裸 1fr：裸 1fr 的最小值是 auto，
+   子元素一旦有不可压缩的宽度（长表格、长单词），整个栅格会被撑破。
+   这是 CSS Grid 最常见的溢出陷阱。 */
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-4)}
+@media (min-width:768px){ .grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+
+/* ============================================================
+ * 4. 顶部
+ * ============================================================ */
+.top{
+  background:linear-gradient(160deg,var(--brand-500) 0%,var(--brand-600) 60%,var(--brand-700) 100%);
+  color:#fff;
+  padding-top:max(var(--sp-5),env(safe-area-inset-top));
+  padding-bottom:var(--sp-5);
+}
+.top-row{display:flex;flex-direction:column;align-items:stretch;gap:var(--sp-5)}
+.top-title{min-width:0}
+.brand-row{display:flex;align-items:center;gap:var(--sp-3)}
+.brand-mark{flex:0 0 auto}
+.top h1{
+  margin:0 0 var(--sp-2);
+  font-size:var(--fs-xl);
+  font-weight:700;
+  line-height:var(--lh-tight);
+  letter-spacing:.4px;
+}
+.top .sub{
+  margin:0;
+  font-size:var(--fs-sm);
+  line-height:var(--lh-snug);
+  color:var(--brand-100);              /* 5.27:1 on brand-500，替代原来的 opacity:.92 */
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);
+}
+@media (min-width:768px){
+  .top{padding-top:max(var(--sp-6),env(safe-area-inset-top));padding-bottom:var(--sp-6)}
+  .top-row{flex-direction:row;align-items:flex-end;justify-content:space-between;gap:var(--sp-6)}
+  .top h1{font-size:var(--fs-2xl)}
+}
+
+/* ---------- 三档切换（录入 / 专家的话 / 评价报告） ---------- */
+.view-toggle{
+  display:flex;
+  width:100%;
+  overflow:hidden;
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.42);
+  border-radius:var(--r-md);
+}
+.view-toggle .vt-seg{
+  flex:1 1 0;
+  min-width:0;
+  min-height:44px;                     /* 触摸目标 */
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:0 var(--sp-2);
+  border:0;
+  background:transparent;
+  color:var(--brand-100);              /* 5.27:1，替代原来的 opacity:.75（只有 4.17:1） */
+  font-family:inherit;
+  font-size:var(--fs-sm);
+  font-weight:600;
+  white-space:nowrap;
+  cursor:pointer;
+}
+.view-toggle .vt-seg + .vt-seg{border-left:1px solid rgba(255,255,255,.26)}
+.view-toggle .vt-seg:hover:not(:disabled){background:rgba(255,255,255,.18);color:#fff}
+.view-toggle .vt-seg.is-active{background:#fff;color:var(--brand-600);font-weight:700}
+/* 禁用态不受 1.4.3 约束，但仍给足可辨识度，并靠 not-allowed 表明不可点 */
+.view-toggle .vt-seg:disabled{background:transparent;color:rgba(255,255,255,.62);cursor:not-allowed}
+@media (min-width:768px){
+  .view-toggle{width:auto}
+  .view-toggle .vt-seg{flex:0 0 auto;min-height:38px;padding:0 var(--sp-4)}
+}
+
+/* ============================================================
+ * 5. 视图与面板
+ * ============================================================ */
+.view{display:none}
+.view.is-active{display:block}
+
+/* 面板只剩一个（录入），标签页已移除 —— 不再需要「面板」这层视觉。
+   把它的边框和内边距摘掉，卡片直接浮在页面底上，少一层嵌套边框。 */
+.panel{display:none}
+.panel.is-active{display:block}
+
+/* ============================================================
+ * 6. 卡片与表单
+ * ============================================================ */
+.card{
+  position:relative;
+  padding:var(--sp-4);
+  background:var(--surface-2);
+  border:1px solid var(--line-200);
+  border-radius:var(--r-lg);
+}
+/* 卡片顶部的品牌发丝线：让每张卡都带上同一个识别记号，
+   整页的"这是一套东西"就靠它串起来。 */
+.card::before,.upload-card::before,.settings::before,.report-toolbar::before{
+  content:"";
+  position:absolute;left:0;top:0;right:0;height:3px;
+  border-radius:var(--r-lg) var(--r-lg) 0 0;
+  background:linear-gradient(90deg,var(--brand-400),var(--brand-200) 60%,transparent);
+  pointer-events:none;
+}
+.card > :last-child{margin-bottom:0}   /* 抵消最后一个字段的下边距，替代原本 padding-bottom:6px 的硬凑 */
+
+/* ---------- 卡片标题的编号徽章与图标 ----------
+   原来有的卡片用 ①② 字符、有的用 📷 emoji、有的什么都没有，
+   三套语言混在一页。统一成：圆形编号徽章 / 线性 SVG 图标 + 同一款标题。 */
+.card h2 .sec-no{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;
+  margin-right:8px;
+  border-radius:var(--r-full);
+  background:var(--brand-500);color:#fff;
+  font-size:var(--fs-xs);font-weight:700;
+  vertical-align:-5px;
+}
+.card h2 .h2-ico{
+  width:17px;height:17px;margin-right:8px;
+  vertical-align:-3px;
+  color:var(--brand-500);
+}
+.card h2{
+  margin:0 0 var(--sp-4);
+  font-size:var(--fs-lg);
+  font-weight:700;
+  line-height:var(--lh-tight);
+  letter-spacing:.2px;
+  color:var(--brand-600);
+}
+/* 副标题独立成行：窄屏上比挤在同一行好读得多 */
+.card h2 small{
+  display:block;
+  margin:var(--sp-2) 0 0;
+  font-size:var(--fs-sm);
+  font-weight:400;
+  line-height:var(--lh-snug);
+  color:var(--ink-500);
+}
+
+.field{display:block;margin:0 0 var(--sp-4)}
+.field > span{
+  display:block;
+  margin-bottom:var(--sp-2);
+  font-size:var(--fs-sm);
+  font-weight:600;
+  color:var(--ink-600);
+}
+.field em{font-style:normal;font-weight:400;font-size:var(--fs-xs);color:var(--ink-500);margin-left:var(--sp-1)}
+
+/* 表单控件：font-size 必须 ≥16px，否则 iOS Safari 聚焦时会把整个页面放大。
+   边框用 --line-strong 而不是 --line-300 —— 控件是白底坐在近白底上，
+   边框是「这里能填东西」的唯一视觉标识，必须达到 3:1。 */
+input[type=text],input[type=number],select,textarea{
+  width:100%;
+  min-height:44px;
+  padding:var(--sp-3);
+  font:inherit;
+  font-size:var(--fs-field);
+  line-height:var(--lh-snug);
+  color:var(--ink-800);
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  border-radius:var(--r-md);
+}
+/* select 保留浏览器原生外观：手机上点开的是系统选择器，比自绘下拉好用得多 */
+textarea{
+  min-height:0;
+  padding-top:var(--sp-2);
+  padding-bottom:var(--sp-2);
+  resize:vertical;
+}
+input::placeholder,textarea::placeholder{color:var(--ink-500);opacity:1}
+
+.quick{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin:calc(var(--sp-2) * -1) 0 var(--sp-4)}
+.quick button{
+  min-height:36px;
+  padding:0 var(--sp-4);
+  font:inherit;
+  font-size:var(--fs-sm);
+  font-weight:600;
+  color:var(--ink-600);
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  border-radius:var(--r-full);
+  cursor:pointer;
+}
+.quick button:hover{border-color:var(--brand-500);color:var(--brand-600);background:var(--brand-50)}
+.quick button:active{transform:scale(.96)}
+
+/* ============================================================
+ * 7. 按钮
+ * ============================================================ */
+/* 主操作：实底品牌绿。一屏最多两个，其他动作全部降级为幽灵按钮。 */
+button.primary{
+  min-height:48px;
+  padding:var(--sp-3) var(--sp-5);
+  font:inherit;
+  font-size:var(--fs-base);
+  font-weight:700;
+  color:#fff;
+  background:var(--brand-500);
+  border:1px solid var(--brand-500);
+  border-radius:var(--r-md);
+  cursor:pointer;
+}
+button.primary:hover:not(:disabled){background:var(--brand-600);border-color:var(--brand-600);box-shadow:var(--sh-2)}
+button.primary:active:not(:disabled){transform:scale(.985)}
+button.primary:disabled{background:var(--neutral-bg);border-color:var(--line-300);color:var(--ink-500);box-shadow:none}
+
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin:var(--sp-5) 0 0}
+.acts-main{display:flex;flex-wrap:wrap;gap:var(--sp-2);flex:1 1 100%}
+.acts-main > button{flex:1 1 0;min-width:0}
+.acts-aux{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2)}
+
+/* ---------- 次级操作：幽灵按钮 ----------
+   载入示例 / 清空 / 撤销 / 清空照片 / 打印 / 复制 / 下载 这类动作，
+   视觉权重必须明显低于主操作。改成幽灵按钮（无底、无框）后，
+   识别职责完全落在文字标签上 —— 文字本身过 4.5:1 即可，
+   边框不再承担识别职责，因此不适用 1.4.11 的承重边界 3:1 要求。
+   悬停给一层极浅的品牌底作为可点反馈。 */
+.acts-aux button,.urow-aux button,.tb-export button{
+  min-height:38px;
+  padding:var(--sp-2) var(--sp-3);
+  font:inherit;
+  font-size:var(--fs-sm);
+  font-weight:600;
+  color:var(--ink-600);
+  background:transparent;
+  border:1px solid transparent;
+  border-radius:var(--r-md);
+  cursor:pointer;
+}
+.acts-aux button:hover,.urow-aux button:hover,.tb-export button:hover{
+  color:var(--brand-600);
+  background:var(--brand-50);
+}
+.acts-aux button:active,.urow-aux button:active,.tb-export button:active{transform:scale(.955)}
+@media (max-width:460px){
+  .acts-main{flex-direction:column}
+  .acts-main > button{width:100%}
+}
+@media (min-width:576px){
+  .acts-aux{margin-left:auto}
+  button.primary{padding-left:var(--sp-6);padding-right:var(--sp-6)}
+}
+
+/* AI 按钮的三种状态：可点 / 缺 Key / 生成中 */
+button.primary.ai{background:var(--info);border-color:var(--info)}
+button.primary.ai:hover:not(:disabled){background:#09586a;border-color:#09586a}
+/* AI 未配置时按钮仍保持实底 —— 主 CTA 不能看着像坏的。
+   状态提示由按钮文字后缀「（未配置 AI）」+ 悬停 title + 点击后自动展开设置承担。 */
+button.primary.ai.needs-key{background:var(--info);border-color:var(--info);color:#fff}
+button.primary.ai.needs-key:hover{background:#09586a;border-color:#09586a}
+button.primary.ai.busy{background:var(--danger);border-color:var(--danger)}
+button.primary.ai.busy:hover{background:#96201a;border-color:#96201a}
+
+.out{margin-top:var(--sp-2)}
+
+/* ============================================================
+ * 8. 图片上传
+ * ============================================================ */
+.upload-card{margin-bottom:var(--sp-4);background:var(--surface);border-color:var(--info-line)}
+.privacy-note{
+  margin:0 0 var(--sp-3);
+  padding:var(--sp-3);
+  font-size:var(--fs-xs);
+  line-height:var(--lh-base);
+  color:var(--warn);
+  background:var(--warn-bg);
+  border-left:3px solid var(--warn);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+}
+.privacy-note strong{color:var(--warn);font-weight:700}
+
+.upload-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-3)}
+.urow-main{display:flex;flex-wrap:wrap;gap:var(--sp-2);flex:1 1 100%}
+.urow-main .filebtn{flex:1 1 0;min-width:0}
+.urow-main button.primary.ai{flex:1 1 0;min-width:0}
+.urow-aux{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-4)}
+.upload-row .field.inline{margin:0;display:flex;align-items:center;gap:var(--sp-2)}
+.upload-row .field.inline > span:first-child{
+  font-size:var(--fs-sm);font-weight:600;color:var(--ink-600);white-space:nowrap;
+}
+.num-wrap{display:inline-flex;align-items:center;gap:var(--sp-1);font-size:var(--fs-sm);color:var(--ink-600)}
+.num-wrap input{width:76px;text-align:right}
+@media (max-width:460px){
+  .urow-main{flex-direction:column}
+  .urow-main > *{width:100%}
+}
+@media (min-width:576px){
+  .urow-aux{margin-left:auto}
+  .filebtn{min-height:44px}
+}
+
+.filebtn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:48px;
+  padding:var(--sp-3) var(--sp-4);
+  font-size:var(--fs-base);
+  font-weight:700;
+  text-align:center;
+  color:var(--info);
+  background:var(--info-bg);
+  border:1px dashed var(--info);
+  border-radius:var(--r-md);
+  cursor:pointer;
+}
+.filebtn:hover{background:var(--info-bg-2);border-style:solid}
+.filebtn:active{transform:scale(.985)}
+
+@media (min-width:576px){
+  .filebtn{min-height:44px}
+}
+
+.thumbs{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-3)}
+/* 不设 overflow:hidden —— 否则删除按钮外扩出去的那圈触摸区会被裁掉 */
+.thumb{
+  position:relative;
+  width:92px;height:92px;
+  background:var(--surface);
+  border:1px solid var(--line-300);
+  border-radius:var(--r-md);
+}
+.thumb img{
+  display:block;width:100%;height:100%;
+  border-radius:calc(var(--r-md) - 1px);
+  object-fit:cover;
+  cursor:zoom-in;
+}
+.thumb-no{
+  position:absolute;left:var(--sp-1);bottom:var(--sp-1);
+  padding:0 var(--sp-2);
+  font-size:var(--fs-2xs);
+  color:#fff;background:rgba(15,25,20,.72);
+  border-radius:var(--r-full);
+}
+.thumb-del{
+  position:absolute;right:2px;top:2px;
+  width:24px;height:24px;padding:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:16px;line-height:1;
+  color:#fff;background:rgba(15,25,20,.6);
+  border:0;border-radius:var(--r-full);
+  cursor:pointer;
+}
+/* 视觉 24px，可点区外扩到 36px —— 超过 WCAG 2.5.8 的 24px 下限 */
+.thumb-del::before{
+  content:"";position:absolute;left:50%;top:50%;
+  width:36px;height:36px;
+  transform:translate(-50%,-50%);
+  border-radius:var(--r-full);
+}
+.thumb-del:hover{background:var(--danger)}
+
+/* ---------- 照片放大层 ---------- */
+.lightbox{
+  display:none;position:fixed;inset:0;z-index:100;
+  align-items:center;justify-content:center;
+  padding:var(--sp-5);
+  background:rgba(10,18,14,.9);
+  cursor:zoom-out;
+}
+.lightbox.is-open{display:flex}
+.lightbox img{max-width:100%;max-height:100%;background:var(--surface);border-radius:var(--r-sm);box-shadow:var(--sh-3)}
+
+/* ---------- 来自照片的字段标记 ---------- */
+.field.from-image-field > span::after{content:" 📷 来自照片";font-size:var(--fs-2xs);color:var(--info);margin-left:var(--sp-1)}
+.field.from-image-field.need-check > span::after{content:" 📷 ⚠️ 拿不准，请核对";color:var(--warn)}
+.from-image-field input,.from-image-field select,.from-image-field textarea{
+  border-color:var(--info);box-shadow:0 0 0 3px rgba(35,97,168,.10);
+}
+.from-image-field.need-check input,.from-image-field.need-check select,.from-image-field.need-check textarea{
+  border-color:var(--warn);box-shadow:0 0 0 3px rgba(138,95,0,.12);
+}
+
+/* ---------- 识别结果待核对 ---------- */
+.review-card{
+  margin-top:var(--sp-2);
+  padding:var(--sp-4);
+  background:var(--info-bg);
+  border:1px solid var(--info-line);
+  border-radius:var(--r-md);
+}
+.review-card h4{margin:0 0 var(--sp-3);font-size:var(--fs-base);font-weight:700;color:var(--info)}
+.review-notes{margin:0 0 var(--sp-3);font-size:var(--fs-sm);line-height:var(--lh-base);color:var(--ink-600)}
+.review-tip{margin:0;font-size:var(--fs-xs);line-height:var(--lh-base);color:var(--ink-600)}
+.review-tip b{color:var(--warn)}
+.review-tbl{background:var(--surface);margin-bottom:var(--sp-3);word-break:break-word}
+.review-tbl tr.cf-none td{color:var(--ink-500)}
+/* 低置信行用左侧色条标记，不用整行底色 —— 底色会和行内可信度药丸撞色 */
+.review-tbl tr.cf-medium td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+.review-tbl tr.cf-low td:first-child{box-shadow:inset 3px 0 0 var(--danger)}
+.cf-problem{font-size:var(--fs-xs);color:var(--danger)}
+.conf{
+  padding:1px var(--sp-2);
+  font-size:var(--fs-2xs);
+  font-weight:700;
+  border-radius:var(--r-full);
+  white-space:nowrap;
+}
+.conf-high{background:var(--ok-bg);color:var(--ok)}
+.conf-medium{background:var(--warn-bg);color:var(--warn)}
+.conf-low{background:var(--danger-bg);color:var(--danger)}
+.conf-none{background:var(--neutral-bg);color:var(--neutral)}
+.conflict-warn{
+  margin-bottom:var(--sp-3);
+  padding:var(--sp-3) var(--sp-4);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-base);
+  color:var(--warn);
+  background:var(--warn-bg);
+  border:1px solid var(--warn-line);
+  border-radius:var(--r-sm);
+}
+.conflict-warn ul{margin:var(--sp-2) 0 var(--sp-1);padding-left:var(--sp-5)}
+.conflict-warn p{margin:0;font-size:var(--fs-xs)}
+
+/* ============================================================
+ * 9. AI 状态
+ * ============================================================ */
+.ai-status{margin-top:var(--sp-3)}
+.ai-status-inner{
+  padding:var(--sp-3) var(--sp-4);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-base);
+  color:var(--info);
+  background:var(--info-bg);
+  border:1px solid var(--info-line);
+  border-radius:var(--r-md);
+}
+.ai-status-inner.running::after{content:"▌";margin-left:3px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+/* 识别成功态：原本没有这条规则，完成提示一直是蓝色，看着像还没跑完 */
+.ai-status-inner.done{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+.err-detail{
+  display:block;
+  margin-top:var(--sp-1);
+  font-size:var(--fs-xs);
+  opacity:.9;
+  word-break:break-all;white-space:pre-wrap;
+}
+.src-model{
+  padding:1px var(--sp-2);
+  font-size:var(--fs-2xs);
+  font-weight:700;
+  color:var(--info);
+  background:var(--info-bg);
+  border:1px solid var(--info-line);
+  border-radius:var(--r-full);
+  white-space:nowrap;
+}
+
+/* ---------- AI 设置 ---------- */
+.settings{
+  margin-top:var(--sp-4);
+  overflow:hidden;
+  background:var(--surface-2);
+  border:1px solid var(--line-200);
+  border-radius:var(--r-lg);
+}
+.settings > summary{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);
+  min-height:48px;
+  padding:var(--sp-3) var(--sp-4);
+  font-size:var(--fs-base);
+  font-weight:700;
+  color:var(--brand-600);
+  list-style:none;
+  cursor:pointer;
+}
+.settings > summary::-webkit-details-marker{display:none}
+.settings > summary::before{content:"▸";flex:0 0 auto;color:var(--ink-500);transition:transform .2s}
+.settings[open] > summary::before{transform:rotate(90deg)}
+.settings > summary:hover{background:var(--brand-50)}
+.cfg-hint{flex:1 1 100%;font-weight:400;font-size:var(--fs-xs);line-height:var(--lh-snug);color:var(--ink-500)}
+@media (min-width:768px){ .cfg-hint{flex:0 1 auto} }
+.settings-body{padding:var(--sp-4);border-top:1px solid var(--line-200)}
+.settings-body .actions{margin-top:var(--sp-2)}
+.cfg-note{margin:var(--sp-3) 0 0;font-size:var(--fs-xs);line-height:var(--lh-base);color:var(--ink-500)}
+.cfg-note strong{color:var(--ink-700)}
+
+/* ============================================================
+ * 10. 视图工具条
+ * ============================================================ */
+.report-toolbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);
+  margin-top:var(--sp-4);
+  padding:var(--sp-3);
+  background:var(--surface);
+  border:1px solid var(--line-200);
+  border-radius:var(--r-lg);
+  box-shadow:var(--sh-1);
+}
+/* 导航在左，导出在右，状态说明独占一行 —— 七八个按钮平铺时分不清哪边是"走"哪边是"用" */
+.tb-nav{display:flex;flex-wrap:wrap;gap:var(--sp-2);flex:1 1 auto;min-width:0}
+.tb-nav button{
+  min-height:40px;
+  padding:var(--sp-2) var(--sp-4);
+  font:inherit;
+  font-size:var(--fs-sm);
+  font-weight:700;
+  color:var(--brand-600);
+  background:var(--surface);
+  border:1px solid var(--line-strong);
+  border-radius:var(--r-md);
+  cursor:pointer;
+}
+.tb-nav button:hover{border-color:var(--brand-500);background:var(--brand-50)}
+.tb-nav button:active{transform:scale(.97)}
+.tb-export{display:flex;flex-wrap:wrap;gap:var(--sp-1);margin-left:auto}
+/* 「查看完整评价报告」是专家的话屏的主 CTA，别被工具条的幽灵样式吃掉 */
+.report-toolbar button.primary{
+  background:var(--brand-500);
+  border-color:var(--brand-500);
+  color:#fff;
+  font-weight:700;
+}
+.report-toolbar button.primary:hover{
+  background:var(--brand-600);border-color:var(--brand-600);color:#fff;box-shadow:var(--sh-2);
+}
+@media (max-width:575px){
+  .tb-nav,.tb-export{flex:1 1 100%;margin-left:0}
+  .tb-nav button,.tb-export button{flex:1 1 0;min-width:0;min-height:44px}
+}
+.report-host{margin-top:var(--sp-4)}
+
+/* ============================================================
+ * 11. 报告
+ * ============================================================ */
+.report{
+  margin-top:var(--sp-5);
+  padding-top:var(--sp-5);
+  border-top:3px solid var(--brand-500);
+}
+.report h3{
+  margin:var(--sp-6) 0 var(--sp-3);
+  padding-left:var(--sp-3);
+  font-size:var(--fs-lg);
+  font-weight:700;
+  line-height:var(--lh-tight);
+  color:var(--brand-700);
+  border-left:4px solid var(--brand-500);
+  border-radius:2px;
+  letter-spacing:.2px;
+}
+.report h3:first-child{margin-top:0}
+
+/* ---------- 总评 ---------- */
+.verdict{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-3);
+  padding:var(--sp-4);
+  background:var(--neutral-bg);
+  border:1px solid var(--neutral-line);
+  border-left-width:5px;
+  border-radius:var(--r-lg);
+}
+.verdict .v-label{font-size:var(--fs-xs);font-weight:700;letter-spacing:1px;color:var(--ink-500)}
+.verdict .v-grade{margin-top:var(--sp-1);font-size:var(--fs-3xl);font-weight:700;line-height:1;letter-spacing:2px}
+.verdict .v-reason{font-size:var(--fs-sm);line-height:var(--lh-base);color:var(--ink-600)}
+.verdict .v-reason b{color:var(--danger)}
+.g-优秀{background:var(--ok-bg);border-color:var(--ok-line)}
+.g-优秀 .v-grade{color:var(--ok)}
+.g-良好{background:var(--info-bg);border-color:var(--info-line)}
+.g-良好 .v-grade{color:var(--info)}
+.g-合格{background:var(--warn-bg);border-color:var(--warn-line)}
+.g-合格 .v-grade{color:var(--warn)}
+.g-待改进{background:var(--danger-bg);border-color:var(--danger-line)}
+.g-待改进 .v-grade{color:var(--danger)}
+@media (min-width:576px){
+  .verdict{grid-template-columns:auto minmax(0,1fr);align-items:center;gap:var(--sp-5);padding:var(--sp-4) var(--sp-5)}
+}
+
+/* ---------- 闸门状态条 ---------- */
+.gatebar{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-3);
+  margin-top:var(--sp-3);
+  padding:var(--sp-3) var(--sp-4);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-snug);
+  border:1px solid;
+  border-radius:var(--r-md);
+}
+.gatebar.ok{background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)}
+.gatebar.bad{background:var(--danger-bg);border-color:var(--danger-line);color:var(--danger)}
+.gatebar button{
+  min-height:36px;
+  padding:var(--sp-2) var(--sp-3);
+  font:inherit;
+  font-size:var(--fs-xs);
+  font-weight:600;
+  color:inherit;
+  background:transparent;
+  border:1px solid currentColor;
+  border-radius:var(--r-sm);
+  cursor:pointer;
+}
+.gatebar button:hover{background:rgba(0,0,0,.05)}
+.gatebar code{padding:1px var(--sp-1);font-size:var(--fs-xs);background:rgba(0,0,0,.06);border-radius:var(--r-sm)}
+
+.meta-line{margin:var(--sp-4) 0 0;font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--ink-500)}
+
+/* ---------- 七维评分：雷达图 + 表 ---------- */
+.score-block{margin-top:var(--sp-6)}
+.radar-row{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-4)}
+@media (min-width:768px){
+  .radar-row{grid-template-columns:minmax(0,440px) minmax(0,1fr);align-items:center;gap:var(--sp-5)}
+}
+.radar-wrap{width:100%;max-width:440px;margin:0 auto}
+.radar-svg{display:block;width:100%;height:auto}
+
+/* 让雷达图跟上新色板，但不改内核 —— 内核把颜色写成了 SVG 表现属性，
+   而 CSS 规则的优先级高于表现属性，属性选择器可以精确命中每一类图形。
+   这些选择器一旦失配（比如内核改了色值），图会退回旧配色，肉眼可见，不会静默出错。 */
+.radar-svg rect{fill:var(--surface-2)}
+.radar-svg polygon[fill="none"][stroke="#e6eaee"]{stroke:var(--line-200)}
+.radar-svg polygon[fill="none"][stroke="#cbd3dc"]{stroke:var(--line-300)}
+.radar-svg line{stroke:var(--line-200)}
+.radar-svg polygon[fill^="rgba"]{fill:rgba(47,111,78,.16);stroke:var(--brand-500);stroke-width:2}
+.radar-svg circle{fill:var(--brand-500)}
+.radar-svg text{fill:var(--ink-600)}
+.radar-svg text[fill="#7b8794"]{fill:var(--ink-500)}
+
+.score-tbl{margin:0}
+.score-cell{font-weight:700;color:var(--brand-600);font-variant-numeric:tabular-nums;text-align:right}
+.radar-note{
+  margin:var(--sp-3) 0 0;
+  padding:var(--sp-3) var(--sp-4);
+  font-size:var(--fs-xs);
+  line-height:var(--lh-base);
+  color:var(--warn);
+  background:var(--warn-bg);
+  border:1px solid var(--warn-line);
+  border-radius:var(--r-md);
+}
+
+/* ---------- 逐维度评价 ---------- */
+.dims{display:grid;gap:var(--sp-2)}
+.dim{
+  padding:var(--sp-3) var(--sp-4);
+  background:var(--surface-2);
+  border:1px solid var(--line-200);
+  border-radius:var(--r-md);
+}
+.dim-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-1)}
+.dim-name{font-size:var(--fs-base);font-weight:700;color:var(--ink-900)}
+.dim p{margin:0;font-size:var(--fs-sm);line-height:var(--lh-base);color:var(--ink-600)}
+
+.pill{
+  flex:0 0 auto;
+  padding:2px var(--sp-3);
+  font-size:var(--fs-xs);
+  font-weight:700;
+  border-radius:var(--r-full);
+  white-space:nowrap;
+}
+.lv-优秀{background:var(--ok-bg);color:var(--ok)}
+.lv-良好{background:var(--info-bg);color:var(--info)}
+.lv-合格{background:var(--warn-bg);color:var(--warn)}
+.lv-待改进{background:var(--danger-bg);color:var(--danger)}
+
+/* ---------- 做得好的地方 ---------- */
+.highlights{margin:0;padding-left:var(--sp-5);font-size:var(--fs-base);line-height:var(--lh-base);color:var(--ink-700)}
+.highlights li{margin-bottom:var(--sp-2)}
+.highlights li:last-child{margin-bottom:0}
+.highlights li::marker{color:var(--brand-500);font-weight:700}
+
+/* ---------- 主要问题 ---------- */
+.issues{display:grid;gap:var(--sp-3)}
+.issue{
+  padding:var(--sp-4);
+  background:var(--surface-2);
+  border:1px solid var(--line-200);
+  border-left-width:4px;
+  border-radius:var(--r-md);
+}
+.issue.L1{background:var(--danger-bg);border-color:var(--danger-line);border-left-color:var(--danger)}
+.issue.L2{background:var(--warn-bg);border-color:var(--warn-line);border-left-color:var(--warn)}
+.issue.L3{background:var(--neutral-bg);border-color:var(--neutral-line);border-left-color:var(--neutral)}
+.issue header{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.issue h4{margin:0;font-size:var(--fs-base);font-weight:700;line-height:var(--lh-snug);color:var(--ink-900)}
+.issue p{margin:0 0 var(--sp-2);font-size:var(--fs-sm);line-height:var(--lh-base);color:var(--ink-600)}
+.issue p:last-child{margin-bottom:0}
+.issue .fix b{color:var(--ink-900)}
+.issue .ask{
+  padding:var(--sp-2) var(--sp-3);
+  color:var(--info);
+  background:var(--info-bg);
+  border:1px solid var(--info-line);
+  border-radius:var(--r-sm);
+}
+.issue .ask b{color:var(--info)}
+.sev{
+  flex:0 0 auto;
+  padding:2px var(--sp-2);
+  font-size:var(--fs-2xs);
+  font-weight:700;
+  letter-spacing:.5px;
+  color:#fff;
+  border-radius:var(--r-sm);
+}
+.issue.L1 .sev{background:var(--danger)}
+.issue.L2 .sev{background:var(--warn)}
+.issue.L3 .sev{background:var(--neutral)}
+
+/* ---------- 绿色化学 ---------- */
+.green-box{
+  padding:var(--sp-4);
+  background:var(--ok-bg);
+  border:1px solid var(--ok-line);
+  border-radius:var(--r-md);
+}
+.green-box h4{margin:0 0 var(--sp-3);font-size:var(--fs-base);font-weight:700;color:var(--ok)}
+.green-box h5{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-sm);font-weight:700;color:var(--ink-600)}
+.green-box h5:first-of-type{margin-top:0}
+.green-box ul{margin:0;padding-left:var(--sp-5);font-size:var(--fs-sm);line-height:var(--lh-base);color:var(--ink-600)}
+.green-box li{margin-bottom:var(--sp-1)}
+.green-box li:last-child{margin-bottom:0}
+.anchor-note{
+  margin:var(--sp-3) 0 0;
+  padding-top:var(--sp-3);
+  font-size:var(--fs-xs);
+  line-height:var(--lh-snug);
+  color:var(--ink-500);
+  border-top:1px dashed var(--line-300);
+}
+
+/* ---------- 追问 ---------- */
+.asks{
+  margin:0;
+  padding:var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-8);
+  font-size:var(--fs-base);
+  line-height:var(--lh-base);
+  color:var(--ink-700);
+  background:var(--info-bg);
+  border:1px solid var(--info-line);
+  border-radius:var(--r-md);
+}
+.asks li{margin-bottom:var(--sp-2)}
+.asks li:last-child{margin-bottom:0}
+.asks li::marker{color:var(--info);font-weight:700}
+
+.hint-empty{font-size:var(--fs-sm);line-height:var(--lh-base);color:var(--ink-500)}
+.foot-note{
+  margin-top:var(--sp-5);
+  padding-top:var(--sp-3);
+  font-size:var(--fs-xs);
+  line-height:var(--lh-base);
+  color:var(--ink-500);
+  border-top:1px dashed var(--line-300);
+}
+
+/* ---------- 表格 ---------- */
+.tbl{width:100%;border-collapse:collapse;margin:0 0 var(--sp-3);font-size:var(--fs-sm)}
+.tbl th,.tbl td{padding:var(--sp-2) var(--sp-3);text-align:left;vertical-align:top;border:1px solid var(--line-300)}
+.tbl th{background:var(--brand-50);color:var(--brand-700);font-weight:700;white-space:nowrap}
+@media (max-width:575px){
+  .tbl th,.tbl td{padding:var(--sp-2);font-size:var(--fs-xs)}
+}
+
+/* ============================================================
+ * 12. 未挂载组件
+ * ------------------------------------------------------------
+ * 学生自评面板与说明页已从模板移除，但 renderSelf / selfCheck
+ * 仍在内核与 app.js 里保留着。这些样式跟着留下，哪天把面板挂
+ * 回去就不用重做；它们当前不会被任何 DOM 命中。
+ * ============================================================ */
+.progress{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.bar{flex:1;min-width:180px;height:10px;overflow:hidden;background:var(--neutral-bg);border-radius:var(--r-full)}
+/* JS 用行内 width 驱动这条进度条，所以这里过渡的是 width */
+.bar > i{display:block;height:100%;background:var(--brand-500);transition:width .35s}
+.bar.is-ready > i{background:var(--ok)}
+.progress .pct{font-size:var(--fs-base);font-weight:700;color:var(--brand-600)}
+.progress .pct.is-ready{color:var(--ok)}
+.h3-plain{margin:var(--sp-5) 0 var(--sp-2);font-size:var(--fs-base);font-weight:700;color:var(--ink-600)}
+.check-grid{display:grid;gap:var(--sp-2)}
+.chk{
+  display:flex;gap:var(--sp-3);align-items:flex-start;
+  padding:var(--sp-3) var(--sp-4);
+  font-size:var(--fs-sm);
+  line-height:var(--lh-base);
+  background:var(--surface-2);
+  border:1px solid var(--line-200);
+  border-radius:var(--r-md);
+}
+.chk .mark{flex:0 0 18px;font-weight:700;font-size:var(--fs-base);line-height:1.5}
+.chk .body{flex:1}
+.chk .body b{display:block;margin-bottom:2px}
+.chk .why{font-size:var(--fs-xs);color:var(--ink-500)}
+.chk .q{
+  margin-top:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3);
+  font-size:var(--fs-sm);
+  color:var(--info);
+  background:var(--info-bg);
+  border-radius:var(--r-sm);
+}
+.chk.ok{background:var(--ok-bg);border-color:var(--ok-line)}
+.chk.ok .mark{color:var(--ok)}
+.chk.miss{background:var(--warn-bg);border-color:var(--warn-line)}
+.chk.miss .mark{color:var(--warn)}
+.risk-box{
+  margin-top:var(--sp-4);
+  padding:var(--sp-4);
+  background:var(--danger-bg);
+  border:1px solid var(--danger-line);
+  border-radius:var(--r-md);
+}
+.risk-box h4{margin:0 0 var(--sp-3);font-size:var(--fs-base);font-weight:700;color:var(--danger)}
+.risk-item{margin-bottom:var(--sp-3)}
+.risk-item:last-child{margin-bottom:0}
+.risk-item b{font-size:var(--fs-sm)}
+.risk-box .q{margin-top:var(--sp-2);font-size:var(--fs-sm);color:var(--danger)}
+.ready-box{
+  padding:var(--sp-4);
+  font-size:var(--fs-base);
+  line-height:var(--lh-base);
+  color:var(--ok);
+  background:var(--ok-bg);
+  border:1px solid var(--ok-line);
+  border-radius:var(--r-md);
+}
+
+/* ============================================================
+ * 13. 页脚
+ * ============================================================ */
+.foot{
+  padding:var(--sp-2) var(--gutter) max(var(--sp-8),env(safe-area-inset-bottom));
+  font-size:var(--fs-xs);
+  line-height:var(--lh-base);
+  color:var(--ink-500);
+  text-align:center;
+}
+
+/* ============================================================
+ * 14. 减弱动效
+ * ------------------------------------------------------------
+ * 尊重系统的「减弱动态效果」设置：动画与过渡降到近乎瞬时，
+ * 但不禁用 —— 状态变化仍然传达得到。
+ * ============================================================ */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+
+/* ============================================================
+ * 15. 打印
+ * ------------------------------------------------------------
+ * 「在哪屏就印哪个」：专家的话屏只印信，报告屏只印报告。
+ * 注意下面那一行的写法被 _acceptance/verify-views.mjs 按字面断言
+ * （逗号后无空格、{ 紧跟），不要格式化它。
+ * ============================================================ */
+@media print{
+  :root{--bg-page:#fff;--surface:#fff;--surface-2:#fff;--line-200:#d8dde2;--line-300:#c2cad3}
+  @page{margin:14mm}
+
+  body{background:#fff;color:#000;font-size:11.5pt;line-height:1.55}.no-print,.top,.foot,.actions,.settings,.ai-status,.view-toggle,.report-toolbar,.upload-card,.lightbox{display:none !important}
+
+  .wrap{max-width:none;padding:0}
+  .view{display:none !important}
+  #view-report.is-active{display:block !important}
+  .panel{display:none;border:none;padding:0;margin:0}
+  .panel.is-active{display:block}
+
+  .report{margin-top:0;padding-top:var(--sp-3);border-top:1px solid #000}
+  .report-host{margin-top:0}
+  .report h3{color:#000;border-left-color:#000;break-after:avoid}.card,.dim,.issue,.green-box,.asks,.chk,.verdict,.score-block,.review-card,.gatebar,.risk-box,.ready-box{
+    break-inside:avoid;page-break-inside:avoid;
+  }
+  .radar-row{display:block}
+  .radar-wrap{width:330px;margin:0 auto}
+  .score-tbl{margin-top:var(--sp-3)}
+  .tbl th,.tbl td{font-size:10pt}
+  a[href]:after{content:""}.verdict,.gatebar,.pill,.issue,.conf,.sev,.green-box,.asks,.review-card,.chk,.risk-box,.ready-box,.score-block{
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+}
+
+/* ============================================================
+ * 方案 B「青春」· 浅色 Mesh 渐变 + 白卡浮动
+ * ------------------------------------------------------------
+ * 拼接于 ui/app.css 之后，靠源序覆盖同特异性的规则。
+ *
+ * 与方案 A 的分工：A 是暗舞台 + 磨砂玻璃，B 是亮舞台 + 白卡浮起。
+ * 文字全部坐在近白面上，base 里的对比度结论继续成立。
+ *
+ * 顺手修掉一个真 bug：base 里 .vt-seg 是浅色文字（为深色页头设计的），
+ * 这版页头是浅色的，禁用的两档会直接隐形 —— 这里翻成深色。
+ *
+ * 零外部资源：无 @import / 无远程 url() / 无 @font-face / 系统字体栈。
+ * ============================================================ */
+
+:root{
+  --yh-ink:#0f2a20;
+  --yh-ink-2:#3f6b58;
+  --yh-line:rgba(16,64,44,.12);
+  --yh-g1:#7fe3b8;  /* 薄荷 */
+  --yh-g2:#8fd8ff;  /* 天蓝 */
+  --yh-g3:#ffe08a;  /* 柠檬 */
+  --yh-g4:#c9b8ff;  /* 雾紫 */
+  --yh-shadow:0 12px 32px -10px rgba(16,64,44,.18), 0 2px 8px rgba(16,64,44,.06);
+  --yh-shadow-hover:0 22px 46px -14px rgba(16,64,44,.26), 0 4px 12px rgba(16,64,44,.08);
+  --yh-motion:cubic-bezier(.22,.61,.36,1);
+  --yh-spring:cubic-bezier(.34,1.56,.64,1);
+  /* 渐变按钮的**最浅一端**才是对比度的考点（白字压在它上面）。
+     这里三组渐变的浅端都压在 ≥4.5:1 上，别再调亮：
+       #1f8455→4.68:1   #2071ad→5.22:1   #c9433a→4.83:1   */
+  --yh-green:#17603c;
+  --yh-green-2:#1f8455;
+  --yh-blue:#0c5f70;
+  --yh-blue-2:#12808f;
+  --yh-danger:#a01f18;
+  --yh-danger-2:#c9433a;
+}
+
+/* ============================================================
+ * 1. 舞台：四色柔光 Mesh，缓慢漂移
+ * ============================================================ */
+body{background:#f3fbf7;color:var(--yh-ink)}
+
+body::before{
+  content:"";position:fixed;inset:-22%;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(760px 640px at 6% 4%,   rgba(127,227,184,.60), transparent 62%),
+    radial-gradient(860px 680px at 94% 8%,  rgba(143,216,255,.58), transparent 64%),
+    radial-gradient(920px 720px at 80% 92%, rgba(255,224,138,.50), transparent 64%),
+    radial-gradient(720px 580px at 12% 94%, rgba(201,184,255,.46), transparent 66%);
+  animation:yh-drift 30s ease-in-out infinite;
+}
+@keyframes yh-drift{
+  0%,100%{transform:translate3d(0,0,0) scale(1)}
+  50%{transform:translate3d(1.6%,-1.8%,0) scale(1.05)}
+}
+
+/* 极淡的圆点纹理，让亮底不至于"空" */
+body::after{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.55;
+  background-image:radial-gradient(rgba(16,64,44,.10) 1px, transparent 1px);
+  background-size:22px 22px;
+  -webkit-mask-image:radial-gradient(900px 640px at 50% 0%,#000 20%,transparent 72%);
+          mask-image:radial-gradient(900px 640px at 50% 0%,#000 20%,transparent 72%);
+}
+
+/* ============================================================
+ * 2. 页头：白玻璃 + 深色文字（修掉禁用档隐形的问题）
+ * ============================================================ */
+.top{
+  background:rgba(255,255,255,.58);
+  border-bottom:1px solid var(--yh-line);
+  box-shadow:0 8px 28px -18px rgba(16,64,44,.35);
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+}
+.top h1{color:var(--yh-ink)}
+/* 渐变裁切文字：必须用 @supports 守着 —— 否则在不支持 background-clip:text
+   的环境里会得到「填充透明 + 没有渐变」= 整行标题隐形。 */
+@supports ((-webkit-background-clip:text) or (background-clip:text)){
+  .top h1{
+    background:linear-gradient(100deg,var(--yh-green) 0%,var(--yh-green-2) 46%,var(--yh-blue) 100%);
+    -webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;
+  }
+}
+.top .sub{color:var(--yh-ink-2)}
+
+.view-toggle{
+  background:rgba(255,255,255,.72);
+  border-color:rgba(16,64,44,.16);
+  box-shadow:var(--yh-shadow);
+}
+.view-toggle .vt-seg{color:var(--yh-ink-2)}
+.view-toggle .vt-seg + .vt-seg{border-left-color:rgba(16,64,44,.14)}
+.view-toggle .vt-seg:hover:not(:disabled){background:rgba(31,122,77,.10);color:var(--yh-green)}
+.view-toggle .vt-seg.is-active{
+  background:linear-gradient(135deg,var(--yh-green),var(--yh-green-2));
+  color:#fff;box-shadow:0 6px 16px -6px rgba(31,122,77,.6);
+}
+/* 关键修复：base 给的是浅色（为深色页头设计），浅页头上会隐形。
+   禁用态虽然豁免 1.4.3，但也不能看不见 —— 压到 2.9:1 左右。 */
+.view-toggle .vt-seg:disabled{color:rgba(16,64,44,.55)}.card,.upload-card,.settings,.report-toolbar,.review-card,.lightbox img{
+  background:rgba(255,255,255,.88);
+  border:1px solid var(--yh-line);
+  border-radius:18px;
+  box-shadow:var(--yh-shadow);
+  backdrop-filter:blur(14px) saturate(125%);
+  -webkit-backdrop-filter:blur(14px) saturate(125%);
+  position:relative;
+}.card::before,.upload-card::before{
+  content:"";position:absolute;left:14px;right:14px;top:0;height:2px;
+  border-radius:99px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--yh-g1),var(--yh-g2),var(--yh-g3),transparent);
+  opacity:.85;
+}.card,.upload-card{overflow:hidden}
+
+.foot{color:var(--yh-ink-2)}
+
+/* ---------- 报告与信件：整份当成一张大卡片 ----------
+   B 的舞台是浅色的，内容直接坐在上面也读得清；
+   但把报告垫成一张"纸"后，与录入页的卡片语言就统一了，
+   渐变发丝线也能一路贯下去。 */
+.report{
+  background:rgba(255,255,255,.88);
+  border:1px solid var(--yh-line);
+  border-top:3px solid transparent;
+  border-image:linear-gradient(90deg,var(--yh-g1),var(--yh-g2),var(--yh-g3)) 1;
+  border-radius:18px;
+  padding:var(--sp-5);
+  box-shadow:var(--yh-shadow);
+  backdrop-filter:blur(14px) saturate(125%);
+  -webkit-backdrop-filter:blur(14px) saturate(125%);
+  position:relative;
+}.card,.upload-card,.settings,.report-toolbar,.review-card{
+  transition:transform .32s var(--yh-spring),box-shadow .32s var(--yh-motion),
+             border-color .3s var(--yh-motion);
+}.card:hover,.upload-card:hover,.settings:hover,.report-toolbar:hover,.review-card:hover{
+  transform:translateY(-4px);
+  border-color:rgba(31,122,77,.34);
+  box-shadow:var(--yh-shadow-hover);
+}.card:hover::before,.upload-card:hover::before{
+  opacity:1;height:3px;
+}.card::before,.upload-card::before{
+  transition:opacity .3s var(--yh-motion),height .3s var(--yh-spring);
+}
+
+.dim,.issue{
+  border-radius:12px;
+  transition:transform .28s var(--yh-spring),box-shadow .26s var(--yh-motion),border-color .26s var(--yh-motion);
+}
+.dim:hover,.issue:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(16,64,44,.28)}
+
+button.primary{
+  background:linear-gradient(135deg,var(--yh-green),var(--yh-green-2));
+  border-color:transparent;
+  box-shadow:0 10px 24px -8px rgba(31,122,77,.55);
+  transition:transform .2s var(--yh-spring),box-shadow .28s var(--yh-motion),filter .2s ease;
+}
+button.primary:hover:not(:disabled){
+  transform:translateY(-2px) scale(1.012);
+  filter:saturate(112%);
+  box-shadow:0 18px 34px -10px rgba(31,122,77,.62);
+}
+button.primary:active:not(:disabled){transform:translateY(0) scale(.958)}
+button.primary.ai{background:linear-gradient(135deg,var(--yh-blue),var(--yh-blue-2));box-shadow:0 10px 24px -8px rgba(31,111,168,.5)}
+/* AI 未配置时按钮仍保持实底，提示改由文字后缀 + title + 点击后展开设置承担 */
+button.primary.ai.needs-key{background:linear-gradient(135deg,var(--yh-blue),var(--yh-blue-2));color:#fff;border:1px solid transparent;box-shadow:0 10px 24px -8px rgba(12,95,112,.5)}
+button.primary.ai.busy{background:linear-gradient(135deg,var(--yh-danger),var(--yh-danger-2));box-shadow:0 10px 24px -8px rgba(160,31,24,.5)}
+
+.actions button:not(.primary),.report-toolbar button,.upload-row button,.quick button,.filebtn{
+  transition:transform .2s var(--yh-spring),box-shadow .26s var(--yh-motion),
+             background-color .2s ease,border-color .2s ease,color .2s ease;
+}
+/* 幽灵按钮不抬升，用底色变化反馈 */
+.tb-nav button:hover{transform:translateY(-2px);box-shadow:0 10px 20px -12px rgba(16,64,44,.4)}
+.actions button:not(.primary):active,.report-toolbar button:active,
+.upload-row button:active,.quick button:active,.filebtn:active{transform:scale(.95)}
+
+:where(a,button,summary,[tabindex],.filebtn):focus-visible{animation:yh-focus 1.6s ease-in-out infinite}
+@keyframes yh-focus{0%,100%{outline-offset:2px}50%{outline-offset:5px}}.pill,.conf,.sev,.src-model{transition:transform .22s var(--yh-spring)}
+.pill:hover,.conf:hover{transform:scale(1.08) rotate(-1deg)}
+
+.quick button:hover{background:var(--yh-green);color:#fff;border-color:var(--yh-green)}
+
+.thumb{border-radius:14px;transition:transform .3s var(--yh-spring),box-shadow .3s var(--yh-motion)}
+.thumb:hover{transform:translateY(-4px) rotate(-1.2deg);box-shadow:0 16px 30px -12px rgba(16,64,44,.35)}
+
+/* ============================================================
+ * 5. 入场 / 滚动显现 / 雷达生长（由 theme-motion.js 驱动）
+ * ============================================================ */
+html.rv-init .rv.is-inview{
+  animation:yh-pop .58s var(--yh-spring) backwards;
+  animation-delay:var(--d,0ms);
+}
+@keyframes yh-pop{
+  from{opacity:0;transform:translateY(18px) scale(.965)}
+  62%{opacity:1;transform:translateY(-3px) scale(1.008)}
+  to{opacity:1;transform:none}
+}
+
+.view.is-active{animation:yh-view .44s var(--yh-motion) backwards}
+@keyframes yh-view{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+html.rv-init .radar-svg polygon[fill^="rgba"]{
+  transform-box:view-box;transform-origin:center;
+  transform:scale(.12);opacity:0;
+  transition:transform .8s var(--yh-spring) .18s,opacity .4s ease .18s;
+}
+html.rv-init .score-block.is-inview .radar-svg polygon[fill^="rgba"]{transform:scale(1);opacity:1}
+
+html.rv-init .radar-svg circle{
+  transform-box:fill-box;transform-origin:center;transform:scale(0);
+  transition:transform .44s var(--yh-spring);
+}
+html.rv-init .score-block.is-inview .radar-svg circle{transform:scale(1)}
+html.rv-init .score-block.is-inview .radar-svg circle:nth-of-type(1){transition-delay:.20s}
+html.rv-init .score-block.is-inview .radar-svg circle:nth-of-type(2){transition-delay:.26s}
+html.rv-init .score-block.is-inview .radar-svg circle:nth-of-type(3){transition-delay:.32s}
+html.rv-init .score-block.is-inview .radar-svg circle:nth-of-type(4){transition-delay:.38s}
+html.rv-init .score-block.is-inview .radar-svg circle:nth-of-type(5){transition-delay:.44s}
+html.rv-init .score-block.is-inview .radar-svg circle:nth-of-type(6){transition-delay:.50s}
+html.rv-init .score-block.is-inview .radar-svg circle:nth-of-type(7){transition-delay:.56s}
+
+html.rv-init .radar-svg polygon[fill="none"],
+html.rv-init .radar-svg line{opacity:0;transition:opacity .5s ease .1s}
+html.rv-init .score-block.is-inview .radar-svg polygon[fill="none"],
+html.rv-init .score-block.is-inview .radar-svg line{opacity:1}
+html.rv-init .radar-svg text{opacity:0;transition:opacity .5s ease .55s}
+html.rv-init .score-block.is-inview .radar-svg text{opacity:1}
+
+/* ============================================================
+ * 6. 「未评分」不是等级
+ * ============================================================ */
+.verdict.g-未评分,.verdict.g-未评{
+  background:rgba(238,241,244,.9);border-color:var(--yh-line);border-style:dashed;
+}
+.verdict.g-未评分 .v-grade,.verdict.g-未评 .v-grade{color:var(--neutral);font-weight:600}
+.pill.lv-未评{background:var(--neutral-bg);color:var(--neutral);font-weight:600}
+
+/* ============================================================
+ * 7. 细节
+ * ============================================================ */
+::selection{background:rgba(127,227,184,.55);color:#0f2a20}
+.num-wrap,.score-tbl,.meta-line,.score-cell,.pct,.cfg-note{font-variant-numeric:tabular-nums}
+
+input[type=text]:focus,input[type=number]:focus,select:focus,textarea:focus{
+  box-shadow:0 0 0 3px rgba(31,122,77,.14),0 0 22px -8px rgba(143,216,255,.9) inset;
+}
+input[type=text],input[type=number],select,textarea{border-radius:12px}
+button.primary,.actions button:not(.primary),.report-toolbar button,.upload-row button,.filebtn{border-radius:12px}.verdict,.dim,.issue,.green-box,.asks,.chk,.risk-box,.ready-box,.gatebar,.ai-status-inner,.radar-note,.conflict-warn{border-radius:14px}
+
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:rgba(16,64,44,.05)}
+::-webkit-scrollbar-thumb{background:rgba(16,64,44,.22);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(16,64,44,.36);background-clip:content-box}
+
+/* ============================================================
+ * 8. 打印：纸上回归纯白，Mesh 与玻璃全部退场
+ * ============================================================ */
+@media print{
+  body{background:#fff !important}
+  body::before,body::after{display:none !important}.card,.upload-card,.settings,.report-toolbar,.review-card,.verdict,.dim,.issue,.green-box,.asks,.report{
+    background:#fff !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    box-shadow:none !important;
+    border-color:#c9d1d9 !important;
+    border-radius:0 !important;
+  }.card::before,.upload-card::before{display:none !important}
+  .report{border-image:none !important;border-top:2px solid #000 !important}
+  .top h1{-webkit-text-fill-color:#000 !important;color:#000 !important;background:none !important}
+  .verdict.g-未评分,.verdict.g-未评{border-style:dashed !important}
+  html.rv-init .rv,html.rv-init .radar-svg *{opacity:1 !important;transform:none !important;animation:none !important}
+}
+
+/* ============================================================
+ * 9. 减弱动效
+ * ============================================================ */
+@media (prefers-reduced-motion:reduce){
+  body::before,body::after{animation:none !important}
+  html.rv-init .rv.is-inview,
+  .view.is-active,
+  html.rv-init .radar-svg polygon,
+  html.rv-init .radar-svg circle,
+  html.rv-init .radar-svg line,
+  html.rv-init .radar-svg text{
+    animation:none !important;transition:none !important;
+    opacity:1 !important;transform:none !important;
+  }
+}
+
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-row">
+    <div class="top-title">
+      <!-- 品牌记号：土层 + 幼苗。页面上唯一的一处插画，
+           用来给这个工具一个能被记住的脸。 -->
+      <div class="brand-row">
+        <svg class="brand-mark" viewBox="0 0 48 48" width="42" height="42" aria-hidden="true">
+          <rect x="4" y="30" width="40" height="14" rx="3" fill="#0a3325"/>
+          <rect x="4" y="24" width="40" height="7" rx="2" fill="#145c40"/>
+          <path d="M24 24 V13" stroke="#9fe3c0" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M24 17 C18 17 16 11 16 6.5 C22 6.5 24 12 24 17 Z" fill="#4fbd8b"/>
+          <path d="M24 20.5 C30 20.5 32 15 32 10.5 C26 10.5 24 15 24 20.5 Z" fill="#9fe3c0"/>
+          <circle cx="12" cy="37" r="1.7" fill="#3fae7a"/>
+          <circle cx="30" cy="41" r="1.4" fill="#3fae7a"/>
+          <circle cx="38" cy="35" r="1.2" fill="#3fae7a"/>
+        </svg>
+        <div>
+          <h1>土壤改良方案 · 专家评价器</h1>
+          <p class="sub">以土壤改良专家的视角，评价学生提交的「土壤 pH 值 + 自订改良方案」</p>
+        </div>
+      </div>
+    </div>
+    <div id="view-toggle" class="view-toggle" role="group" aria-label="视图切换">
+      <button class="vt-seg is-active" data-view="input">录入</button>
+      <button class="vt-seg" data-view="report" disabled>评价报告</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ==================== 视图一：录入与评价 ==================== -->
+  <div id="view-input" class="view is-active">
+
+    <!-- ============ 专家评价 ============ -->
+    <!-- 原来这里是 role="tabpanel"，但配套的 tablist / tab 已经移除，
+         孤立的 tabpanel 属于错位 ARIA，屏幕阅读器会期待不存在的标签页。
+         现在退回普通 section。 -->
+    <section id="panel-eval" class="panel is-active">
+
+      <div class="card upload-card no-print">
+        <h2><svg class="h2-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>从照片识别 <small>可选 —— 拍学生手写记录，自动读出来填进下面的表单</small></h2>
+        <p class="privacy-note">
+          ⚠️ 照片会发送到 AI 服务商。建议<strong>先裁掉姓名等个人信息</strong>再上传。
+        </p>
+        <!-- 按钮分两组：主操作（选照片 / 识别并填入）一行，
+             参数与清理动作（裁掉顶部 / 撤销 / 清空）降级成幽灵按钮另一行。
+             平铺在一行时三种性质的操作视觉权重完全一样，看不出该先点哪个。 -->
+        <div class="upload-row">
+          <div class="urow-main">
+            <label class="filebtn">
+              <input id="img-file" type="file" accept="image/*" multiple hidden>
+              选择照片（可多张）
+            </label>
+            <button id="img-run" class="primary ai">识别并填入</button>
+          </div>
+          <div class="urow-aux">
+            <label class="field inline">
+              <span>裁掉顶部</span>
+              <span class="num-wrap"><input id="img-crop" type="number" min="0" max="80" step="5" value="0">%</span>
+            </label>
+            <button id="img-undo" hidden>撤销识别</button>
+            <button id="img-clear">清空照片</button>
+          </div>
+        </div>
+        <div id="img-thumbs" class="thumbs"></div>
+        <div id="img-status" class="ai-status"></div>
+        <div id="img-review" class="review"></div>
+      </div>
+
+      <div class="grid no-print">
+        <div class="card">
+          <h2><span class="sec-no" aria-hidden="true">1</span>学生提交的内容</h2>
+          <label class="field">
+            <span>土壤 pH 值 <em>必填</em></span>
+            <input id="e-ph" type="number" step="0.1" min="0" max="14" placeholder="例如 4.5">
+          </label>
+          <div class="quick" id="e-quick">
+            <button type="button" data-ph="4.0">4.0</button>
+            <button type="button" data-ph="4.5">4.5</button>
+            <button type="button" data-ph="5.5">5.5</button>
+            <button type="button" data-ph="6.8">6.8</button>
+            <button type="button" data-ph="8.0">8.0</button>
+            <button type="button" data-ph="8.5">8.5</button>
+          </div>
+          <label class="field">
+            <span>学生自己的判断 <em>选填</em></span>
+            <input id="e-diag" type="text" placeholder="例如：酸性土">
+          </label>
+          <label class="field">
+            <span>改良方案原文 <em>必填</em></span>
+            <textarea id="e-plan" rows="7" placeholder="例如：我打算给这块地加熟石灰来中和酸，用多一点效果更好，应该能彻底解决。"></textarea>
+          </label>
+        </div>
+
+        <div class="card">
+          <h2><span class="sec-no" aria-hidden="true">2</span>背景信息 <small>缺什么，系统就会追问什么</small></h2>
+          <label class="field">
+            <span>打算种什么</span>
+            <input id="e-crop" type="text" placeholder="例如：小麦 / 杜鹃">
+          </label>
+          <label class="field">
+            <span>场地规模</span>
+            <input id="e-scale" type="text" placeholder="例如：花盆 / 学校实验田 / 大田 / 自家阳台">
+          </label>
+          <label class="field">
+            <span>土壤质地</span>
+            <select id="e-texture">
+              <option value="">— 未填 —</option>
+              <option>沙土</option>
+              <option>壤土</option>
+              <option>黏土</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>pH 是怎么测的</span>
+            <input id="e-method" type="text" placeholder="例如：pH计测浸出液 / pH试纸 / 探头直插土里">
+          </label>
+          <label class="field">
+            <span>采样点数</span>
+            <input id="e-samples" type="number" min="1" max="99" value="1">
+          </label>
+        </div>
+      </div>
+
+      <div class="actions no-print">
+        <div class="acts-main">
+          <!-- 只有一个生成按钮：内部走 AI。没填 Key 时不生成报告，
+               改为展开「AI 设置」并提示先填 Key（旧的「自动回落成规则模式」已取消）。
+               id 保留 e-run-ai（setAiBusy / updateAiButton 都绑在它上面）。 -->
+          <button id="e-run-ai" class="primary ai">生成专家评价</button>
+        </div>
+        <div class="acts-aux">
+          <button id="e-demo">载入示例</button>
+          <button id="e-clear">清空</button>
+        </div>
+      </div>
+
+      <details class="settings no-print" id="e-settings">
+        <summary>AI 设置 <span class="cfg-hint">API Key 只存在你自己这台电脑的浏览器里，不会写进这个 HTML 文件</span></summary>
+        <div class="settings-body">
+          <div class="grid">
+            <div>
+              <label class="field"><span>接口地址 baseURL</span>
+                <input id="cfg-base" type="text" placeholder="https://api.deepseek.com"></label>
+              <label class="field"><span>模型</span>
+                <input id="cfg-model" type="text" placeholder="deepseek-flash"></label>
+            </div>
+            <div>
+              <label class="field"><span>API Key</span>
+                <input id="cfg-key" type="password" placeholder="sk-..." autocomplete="off"></label>
+              <label class="field"><span>思考强度</span>
+                <select id="cfg-effort">
+                  <option value="low">low —— 快、便宜</option>
+                  <option value="high">high —— 默认，推荐</option>
+                  <option value="max">max —— 最深，也最贵</option>
+                </select></label>
+            </div>
+          </div>
+          <p class="cfg-note">还没有 Key？到 <b>platform.deepseek.com</b> 注册，在 API keys 页面建一个（<b>sk-</b> 开头的一长串）。班里统一用老师发的那个，粘进来点「保存到本机」就行。</p>
+          <div class="actions">
+            <button id="cfg-save">保存到本机</button>
+            <button id="cfg-clear">清除已保存的 Key</button>
+          </div>
+          <p class="cfg-note" id="cfg-note"></p>
+          <p class="cfg-note">说明：接上 AI 后，<strong>判定与打分全部由 AI 完成</strong>——七个维度的等级、总评、问题清单都由模型给出。本页内核只做四件事：① 校验输入是否合法；② <strong>标注每条问题的引文能否在学生原文中逐字找到</strong>（对不上不丢问题，只是不作为学生的原话展示）；③ <strong>术语闸门</strong>——输出里不许出现初三读不懂的词，命中就打回让 AI 重写；④ 渲染。<br>参考方案（材料经验表）只作为提示词里的参考，<strong>不参与判定</strong>。<br>不填 Key 时不会出评价：点「生成专家评价」会展开「AI 设置」，提示你先填 Key。</p>
+        </div>
+      </details>
+
+      <div id="e-ai-status" class="ai-status no-print"></div>
+      <div id="e-msg" class="out no-print"></div>
+    </section>
+  </div>
+
+  <!-- ==================== 视图二：评价报告 ==================== -->
+  <div id="view-report" class="view">
+    <div class="report-toolbar no-print">
+      <div class="tb-nav">
+        <button id="report-back">← 返回修改</button>
+      </div>
+      <div class="tb-export">
+        <button id="r-print">打印 / 存 PDF</button>
+        <button id="r-copy">复制 Markdown</button>
+        <button id="r-dl">下载 Markdown</button>
+      </div>
+    </div>
+    <div id="report-body" class="report-host"></div>
+  </div>
+
+</main>
+
+<footer class="foot wrap no-print">
+  <span>判定由你接入的模型给出；内核只做格式校验、引文标注、术语闸门与排版</span>
+</footer>
+
+<div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="照片放大"><img id="lightbox-img" alt="照片放大"></div>
+
+<script>
+/**
+ * 土壤改良方案 · 专家评价内核
+ * ---------------------------------------------------------------
+ * 设计原则：
+ *   1. 判定层可用专家知识（超纲），表达层必须过术语闸门（不超纲）。
+ *   2. 内核只做确定性判断，不做文学发挥 —— 措辞交给提示词层。
+ *   3. 信息不足时不硬评：分层输出「能评什么」+「还要问什么」。
+ *
+ * 纯函数 + 只读数据文件，无第三方依赖，可离线运行。
+ */
+
+/* ===== 内联数据（构建时注入，请勿手改；改数据请改 data/*.json 后重新构建）===== */
+const DATA = {"rubric":{"meta":{"name":"七维评价量规","grades":["优秀","良好","合格","待改进"],"radar":{"score_map":{"优秀":90,"良好":75,"合格":60,"待改进":35},"labels":{"diagnosis":"诊断","chemistry":"原理","green":"绿色化学","feasibility":"可行性","ecology":"生态影响","completeness":"完整性","safety":"安全"},"rings":[25,50,75,100],"note":"分数是等级的固定映射，不是独立测量。雷达图只用来一眼看出七个维度的相对强弱——面积没有数学意义，不可用于计算总分或排名。"},"curriculum_anchor":"《义务教育化学课程标准（2022年版）》主题五「化学与社会·跨学科实践」5.1 化学与可持续发展 / 5.2 化学与资源、能源、材料、环境、健康 / 5.3 化学、技术、工程融合解决跨学科问题的思路与方法 / 5.4.1 科学伦理及法律规范 / 5.4.2 社会性科学议题的合理应对","note":"本量规锚定课标主题五，供智能体给出'第二意见'。正式用于教学打分前，教师应按本校量表校准。"},"dimensions":[{"id":"diagnosis","order":1,"name":"诊断是否成立","anchor":"科学探究与化学实验；5.3 系统规划和实施","core_question":"学生从 pH 值得出的结论，站得住脚吗？依据够不够？","indicators":["有没有说清 pH 是怎么测的（试纸 / 比色卡 / pH 计；测的是土壤浸出液，还是探头直接插土里）","从 pH 值得出的『酸性 / 中性 / 碱性』判断对不对","有没有把『一个点的一个 pH 值』直接当成『整块地』的结论（采样有没有代表性）","有没有只凭 pH 一个数就断定『必须改良』，而没看作物、质地、有机质等背景"],"levels":{"优秀":"pH 解读准确，交代了测量方法，自己就意识到单点数据的局限，并主动说出还需要补哪些信息。","良好":"pH 解读准确，也交代了测量方法，但没意识到『一个点代表一块地』的局限。","合格":"pH 解读基本正确，但测量方法没交代清楚，说不清这个数是怎么来的。","待改进":"pH 解读出现错误（例如把 pH 6.5 说成酸性土），或者把一个点的数据直接当成整块地的结论。"},"common_failures":["把 pH 试纸直接插进干土里比色（正确做法是测土壤浸出液）","只在一个地方取一个样，就代表整块地","把 pH 6.5～7.0 说成『酸性』"]},{"id":"chemistry","order":2,"name":"化学原理正确性","anchor":"物质的性质与应用（酸和碱、中和反应）","core_question":"选的材料和用到的化学原理，对不对？","indicators":["措施是否对症：酸性土要用碱性物质，碱性土不能再用碱性物质","化学原理有没有说清（能不能写出或说清中和反应）","有没有使用危险物质（强碱、强酸）","有没有选了根本无效的做法（例如往含石灰石的土里加酸）"],"levels":{"优秀":"措施对症，原理说得清楚（能说出中和反应），并且主动避开了危险或无效的选择。","良好":"措施对症，原理说得笼统但方向正确。","合格":"措施大方向对，但原理说不清，或有个别地方不准确。","待改进":"措施与土壤方向不符，或者使用了危险物质 / 根本无效的做法。"},"common_failures":["碱性土继续加石灰（方向相反）","用氢氧化钠这类强碱去中和酸性土（危险且极易过量）","用稀盐酸去改良碱性土（既不安全，遇到石灰性土壤还根本无效）"]},{"id":"green","order":3,"name":"绿色化学","anchor":"5.1 化学与可持续发展（绿色发展观）；5.2 树立环保意识；2011版『认识合理使用化肥、农药对保护环境的重要意义』","core_question":"从绿色化学角度看，这个方案『干净』吗？","indicators":["原料来源：是天然就有的，还是要高温烧出来的（能耗）","用量克制：是不是刚好够用，有没有用多","本身是否无毒无害、有没有腐蚀性","用完会不会留下新麻烦（二次污染）","有没有想到从源头上少制造这个问题（源头预防）"],"levels":{"优秀":"优先选天然、低能耗的原料，用量克制，考虑到会不会留下新麻烦，并且体现出『从源头少制造问题』的思路。","良好":"原料选择和用量都合理，但没有考虑能耗，或没有考虑会不会留下新麻烦。","合格":"方案能起作用，但完全没有从绿色化学角度想过。","待改进":"选择了高能耗、有毒有害，或者大量使用会造成新问题的做法（例如大量施用石灰导致土壤板结、营养被锁住）。"},"common_failures":["只想到『能把 pH 调过来』，没想过原料是怎么来的、要不要烧","认为『多加点效果更好』","没意识到过量石灰本身会变成新的污染源"]},{"id":"feasibility","order":4,"name":"现实可行性","anchor":"5.3 化学、技术、工程融合解决跨学科问题的思路与方法；5.4.2 社会性科学议题的合理应对（经济发展）","core_question":"这个方案在现实里能不能真的做成？","indicators":["材料买不买得到、贵不贵","在什么场地做（花盆 / 学校实验田 / 大田），操作条件是否具备","用量量级是否符合现实（一盆花和大田差好几个数量级）","多久能见效，学生有没有时间等"],"levels":{"优秀":"材料容易得到，用量符合实际量级，说清了操作步骤和时间安排。","良好":"基本可操作，但用量或步骤还不够具体。","合格":"方向可行，但细节缺失，照着做会卡住。","待改进":"用量量级明显错误（例如给一盆花加几公斤石灰），或材料现实中根本拿不到。"},"common_failures":["不做盆栽与大田的区分，量级混用","选了实验室才有的药品，家里或学校根本用不上","没考虑见效需要时间"]},{"id":"ecology","order":5,"name":"生物与生态影响","anchor":"5.1 树立人与自然和谐共生的科学自然观；生物学科接口","core_question":"对植物和土里的小生物会有什么影响？","indicators":["有没有结合目标作物的适宜 pH 来定改良目标","有没有考虑对蚯蚓、微生物的影响","有没有意识到石灰加过头会把一些营养元素锁住，叶子会发黄","有没有考虑土壤板结、结构变差"],"levels":{"优秀":"结合具体作物的适宜 pH 定目标，考虑了对土壤生物的影响，还主动提醒了副作用。","良好":"考虑了作物适宜 pH，但没考虑土壤生物或副作用。","合格":"只想到『把 pH 调合适』，没往生物层面想。","待改进":"方案会明显伤害植物或土壤生物，而学生没有意识到。"},"common_failures":["把目标一律定成 pH 7，不管种的是什么","忽略『石灰加多了铁、锌等元素被锁住，叶子发黄』","没想过土壤里还有活的生物"]},{"id":"completeness","order":6,"name":"系统性与完整性","anchor":"5.3 认识在解决实际问题时需要综合运用各学科知识、系统规划和实施","core_question":"这个方案是不是一个完整、能验证的方案？","indicators":["有没有设定明确的目标（目标 pH 是多少）","有没有说清用什么、用多少、怎么施、什么时候施","有没有设计改良之后的复测","有没有设置对照（对比实验的思想）"],"levels":{"优秀":"目标、措施、用量、时间、复测、对照都齐全，是一个完整的闭环。","良好":"目标和措施清楚，有复测意识，但对照或时间安排缺失。","合格":"说了要做什么，但没说要达到什么效果、也没说怎么检验。","待改进":"只有一句『加石灰』，没有任何可执行的细节。"},"common_failures":["没有目标 pH，不知道改良到什么程度算成功","改良完不复测，无法判断有没有效果","没有对照，无法确定是改良起了作用"]},{"id":"safety","order":7,"name":"安全与规范","anchor":"5.4.1 科学伦理及法律规范；生态环境保护法律法规意识","core_question":"这个方案安全吗？表述严谨吗？","indicators":["有没有使用危险化学品，有没有写防护措施（生石灰遇水放热、稀盐酸有腐蚀性）","操作规范是否清楚（戴护具、通风、不直接用手碰）","表述是否严谨，有没有把『可能有效』说成『一定有效』","有没有对大面积施用乱作承诺"],"levels":{"优秀":"选用安全的材料，写清了防护和操作注意，表述严谨、不夸大。","良好":"材料选择安全，但没有写防护注意。","合格":"没提安全问题，但方案里也没有危险动作。","待改进":"使用了危险物质却完全没提防护，或者断言效果、对大面积施用乱作承诺。"},"common_failures":["让同学用手直接抓生石灰","把『可能有效』写成『一定能改良』","建议对整块地大面积施用，却不提风险"]}],"overall_rule":{"levels":{"优秀":"没有任何 L1 问题；至少 5 个维度达到『优秀』或『良好』；其中『化学原理正确性』和『绿色化学』两个维度不得低于『良好』。","良好":"没有任何 L1 问题；多数维度为『良好』或『合格』。","合格":"没有任何 L1 问题，但多个维度仅达『合格』。","待改进":"存在任意一个 L1 问题（原理错误 / 使用危险物质 / 措施方向与土壤相反）。"},"hard_cap":"只要出现任一 L1 问题，总评不得高于『合格』，且该问题必须单独列为第一条。","encouragement_rule":"无论总评如何，都必须写出至少一条具体的亮点；亮点必须具体到方案里的某一句话，不许写『思路清晰』这类空话。"}},"termGate":{"meta":{"name":"术语闸门","purpose":"保证输出不超出初三学生理解。判定层可以用专家知识，表达层必须过这道闸门。","rule":"输出中出现 gate 里的任何 blocked 词，必须同时给出 alternatives 中的说法；否则视为违规。唯一例外见 exemption_rule。","curriculum_anchor":"人教版九年级化学下册 第十单元《酸和碱》跨学科实践活动9「探究土壤酸碱性对植物生长的影响」；《义务教育化学课程标准（2022年版）》主题五「化学与社会·跨学科实践」"},"whitelist_grade9":{"化学":["pH","酸碱指示剂","石蕊","酚酞","pH试纸","比色卡","酸","碱","中性","中和反应","复分解反应","氢氧化钙","熟石灰","消石灰","氢氧化钠","烧碱","火碱","碳酸钙","石灰石","大理石","稀盐酸","稀硫酸","溶液导电性","导电性","化肥","氮肥","磷肥","钾肥","铵态氮肥","碳酸钠","纯碱","草木灰","腐蚀性","石灰水","二氧化碳","盐","化合价","化学方程式"],"生物":["根系","根毛","微生物","蚯蚓","腐殖质","光合作用","呼吸作用","吸水","蒸腾","长势"],"地理":["土壤质地","沙土","壤土","黏土","水土流失","地下水","耕作层","表层土"],"数学":["平均值","误差","变量","对照实验","曲线","趋势","数据表","单位"]},"gate":[{"blocked":"阳离子交换量","also_blocked":["CEC","交换性盐基"],"alternatives":["这种土保肥保水的能力","土'抓住'养分的能力"],"note":"决定土壤保肥能力，是判断能否靠施肥见效的关键，但名词超纲。"},{"blocked":"交换性铝","also_blocked":["活性铝","铝毒"],"alternatives":["土里会溶出来的铝，它会让根长不好","酸性太强时土里跑出来的铝，会伤根"],"note":"强酸性土的核心危害，初中完全不涉及，必须翻译成'伤根'。"},{"blocked":"盐基饱和度","alternatives":["土里能存养分的位置被占了多少"],"note":""},{"blocked":"缓冲容量","also_blocked":["缓冲性","酸碱缓冲","pH缓冲"],"alternatives":["土壤自己稳住酸碱的能力","土'扛住'酸碱变化的本事"],"note":"用来解释'为什么加了石灰pH不一定马上变'，这是很好的专家洞察，但必须翻译。"},{"blocked":"碱化度","also_blocked":["ESP","钠化度"],"alternatives":["土里钠占的比例","土被钠'占住'的程度"],"note":"区分盐土与碱土的关键指标，初中无法测也不要求。"},{"blocked":"次生盐渍化","alternatives":["水浇多了、排不出去，盐分又积回土里"],"note":"用来提醒'大水漫灌不一定是好办法'。"},{"blocked":"微量元素有效性","also_blocked":["有效性下降","养分固定","被固定"],"alternatives":["有些营养元素会被'锁住'，植物吸不到，叶子会发黄"],"note":"解释'石灰加过头为什么反而有害'，是最重要的专家提醒之一。"},{"blocked":"螯合","also_blocked":["络合","螯合物"],"alternatives":["把营养元素'抓'住，不让它跑掉"],"note":""},{"blocked":"原子经济性","alternatives":["用的原料有多少真的变成了有用的东西，有没有白浪费"],"note":"绿色化学十二原则之一，初中不讲这个词，只讲'浪不浪费'。"},{"blocked":"石灰需要量","alternatives":["需要加多少石灰"],"note":""},{"blocked":"淋溶","also_blocked":["淋失","淋洗损失"],"alternatives":["被水冲到土层下面去了","跟着水流失了"],"note":""},{"blocked":"硝化","also_blocked":["反硝化","氨挥发"],"alternatives":["土壤里的氮被微生物变来变去","氮变成气体跑掉了"],"note":"用来解释'石灰为什么不能和铵态氮肥混用'。"},{"blocked":"拮抗","also_blocked":["离子拮抗"],"alternatives":["营养元素之间会互相抢，一种多了另一种就吸不到"],"note":""},{"blocked":"容重","alternatives":["土的松紧程度","土是松还是板"],"note":""},{"blocked":"田间持水量","alternatives":["土能存住多少水"],"note":""},{"blocked":"电导率","also_blocked":["EC值","EC"],"alternatives":["水里溶了多少盐（水导电的能力）"],"note":"初中化学有'溶液导电性'，可以借这个说法；数字可以给，但要说清是'水的导电能力'。"},{"blocked":"土壤溶液","alternatives":["土里泡出来的水","土壤浸出液"],"note":"实验里学生做的就是'土壤浸出液'，用这个词即可。"},{"blocked":"原位测定","also_blocked":["饱和泥浆","土水比"],"alternatives":["直接把探头插进土里测","把土和水按比例混一混再测"],"note":"测法不同数值就没有可比性，但名词不必出现。"},{"blocked":"微生物群落","also_blocked":["微生物区系","菌群结构"],"alternatives":["土里的各种小生物和微生物"],"note":""},{"blocked":"腐殖化","also_blocked":["矿化"],"alternatives":["慢慢变成土里的腐殖质","慢慢分解掉"],"note":""},{"blocked":"土壤胶体","also_blocked":["胶体","土壤胶体表面"],"alternatives":["土里能吸住养分的那些极细的颗粒","土里像'浆'一样能把养分粘住的部分"],"note":"高优先。胶体是高中'分散系'概念，初三完全不涉及；但它同时是保肥、缓冲、石膏改碱三件事的底层解释，专家一张口就会用到。"},{"blocked":"交换性酸","also_blocked":["水解性酸度","潜性酸度","活性酸度","交换性氢"],"alternatives":["藏在土颗粒上、浇水也冲不走的酸","土里'存货'的酸，不是水里那一点"],"note":"高优先。区分活性酸/潜性酸是大学土壤化学；而'为什么水冲不掉土壤的酸'正是本项目 ineffective 判定的核心讲解，翻译后反而更清楚。"},{"blocked":"交换性钠","also_blocked":["代换作用","离子代换","交换反应","交换性离子"],"alternatives":["土里'占住位置'的钠","钙把钠从土里'换'出来"],"note":"高优先。碱化度已在闸门内，但讲石膏改碱必然用到'交换/代换'，属同一概念族，只收名词不收动词等于没收。"},{"blocked":"团粒结构","also_blocked":["团聚体","水稳性团聚体"],"alternatives":["土变成一粒一粒的'小团子'，又松又透气","土松成一团一团的，不板结"],"note":"高优先。高中地理/土壤学概念；初中只需要'松'和'板结'两个状态词。注意'土壤结构'不在拦截范围（较通俗）。"},{"blocked":"土壤孔隙度","also_blocked":["孔隙度","通气孔隙","毛管孔隙","通气透水性"],"alternatives":["土里缝隙多不多，能不能透气透水","土是松还是硬"],"note":"高优先。孔隙率是高中及以上内容；初中只到'疏松/板结'的定性描述。"},{"blocked":"碳氮比","also_blocked":["C/N","碳氮比例","碳氮失调"],"alternatives":["秸秆里'碳'太多、'氮'太少，微生物分解时会跟作物抢氮"],"note":"高优先。高中生物/农学概念。但秸秆还田导致作物发黄的因果，用'抢氮'一句话就够。"},{"blocked":"生理酸性肥料","also_blocked":["生理碱性肥料","生理中性肥料"],"alternatives":["这种肥料用久了会让土越来越酸"],"note":"高优先。人教版九年级只要求区分氮肥/磷肥/钾肥与铵态氮肥的混用禁忌，不涉及'生理酸碱性'。"},{"blocked":"缓冲能力","also_blocked":["缓冲体系","缓冲作用","酸碱缓冲体系","碳酸盐缓冲"],"alternatives":["土壤自己稳住酸碱的能力","土'扛住'酸碱变化的本事"],"note":"高优先。闸门原有'缓冲容量/缓冲性/酸碱缓冲/pH缓冲'，但专家最常用的'缓冲能力'恰好不匹配（'缓冲能力'不含'缓冲性'），实测未拦。同一概念的变体必须一并收。"},{"blocked":"土壤母质","also_blocked":["成土母质","母岩","母质层","第四纪红黏土"],"alternatives":["这块土原来是从什么石头、什么沉积物变来的"],"note":"高优先。'成土因素'是高中地理内容。原先白名单里误收了'成土'一词，会让人误以为整个词族安全——实际上'成土母质'超纲。已从 whitelist_grade9 移除'成土'。"},{"blocked":"盐基离子","also_blocked":["盐基不饱和","盐基离子组成","交换性钙镁"],"alternatives":["土里存着的钙、镁、钾这些养分"],"note":"高优先。与已收的'盐基饱和度'同一族。"},{"blocked":"离子方程式","also_blocked":["离子反应方程式","写成离子形式"],"alternatives":["写成初三课本里的化学方程式"],"note":"高优先。人教版九年级只要求化学方程式。本仓库 amendment-facts 的 principle 字段里有 `Ca(OH)₂ + 2H⁺ → Ca²⁺ + 2H₂O` 这类离子方程式且会被注入提示词，模型一旦回抄就直接超纲。"},{"blocked":"电位法","also_blocked":["玻璃电极","浸提","消解","目筛","通过60目"],"alternatives":["用 pH 计探头去测","把土和水按比例混一混再测"],"note":"高优先。测法术语。学生只需说清'试纸/比色卡/pH 计'和'土壤浸出液'，初中不出现'浸提''电位法''目筛'。"},{"blocked":"氧化还原电位","also_blocked":["还原条件","淹水还原","氧化还原状况"],"alternatives":["土里有没有空气、闷不闷（淹水久了会闷）"],"note":"中优先。高中/大学内容；讲稻田、涝害时会冒出来。单字母 Eh 因易误报未收，如需收请设 not_within_ascii_word 守卫。"},{"blocked":"钠吸附比","alternatives":["土里的钠比钙镁多出多少"],"note":"中优先。大学土壤学指标。碱化度已在闸门内，属同类指标。单字母缩写 SAR 未收（易误报）。"},{"blocked":"脱硫石膏","also_blocked":["磷石膏","工业副产石膏","氟石膏"],"alternatives":["工厂处理废气剩下的石膏"],"note":"中优先。专家推荐工业副产石膏改碱时涉及杂质与重金属风险，超出初三可评估范围；若必须提，应同时说'要先确认它干净、安全'。"},{"blocked":"客土法","also_blocked":["客土","换土法","大换土"],"alternatives":["把原来的土挖走，换成别处的好土"],"note":"中优先。土方工程术语，且涉及经济与生态代价，初中只需'换土'这个说法。"},{"blocked":"腐殖酸","also_blocked":["富里酸","胡敏酸","黄腐酸"],"alternatives":["腐殖质里能溶在水里的那一部分"],"note":"中优先。白名单把'腐殖质'视为安全词，但'腐殖酸/富里酸'是有机化学名词，属另一层级，必须单独拦。"},{"blocked":"速效钾","also_blocked":["碱解氮","有效磷","速效磷","有效养分","有效态"],"alternatives":["作物马上就能吸收的那部分养分"],"note":"中优先。化验室指标体系。闸门收了'微量元素有效性'，却漏了最常用的'速效钾/碱解氮/有效磷'三兄弟。"},{"blocked":"显著性检验","also_blocked":["显著性差异","方差分析","随机区组","相对标准偏差"],"alternatives":["每组多做几次，看结果稳不稳定、差得多不多"],"note":"中优先。初中统计只到平均数、中位数、众数、方差。'平行样'未收（较通俗）；'标准差'属灰色地带，暂不硬拦。"},{"blocked":"盐胁迫","also_blocked":["渗透胁迫","盐害","生理干旱"],"alternatives":["土里盐太多，根吸不到水，苗会蔫"],"note":"中优先。植物生理学概念；初中只说'根吸不到水'。"},{"blocked":"连作障碍","also_blocked":["重茬","连作"],"alternatives":["同一块地年年种同一种，土会越来越不适合它"],"note":"中优先。农业术语，字面不易懂。"},{"blocked":"生物炭","also_blocked":["生物质炭","炭基肥","热解炭"],"alternatives":["把秸秆、树枝在缺氧条件下烧成的炭，掺到土里（这是工厂做的，不要自己在家烧）"],"note":"中优先，且带安全提示。'缺氧热解'涉及加热与烟气，绝不能让学生以为可以自己烧；翻译时必须同时补一句安全提醒。"}],"exemption_rule":{"allowed_when":"某个判断非用超纲名词不可，且换任何说法都会失真时。","required_format":"可以说那个词，但必须紧跟一句「初中不用记这个词，你只要知道……」","markers":["初中不用记","不用记这个词","你只要知道"],"example":"'这叫阳离子交换量，初中不用记这个词，你只要知道它说的是这种土保肥保水的能力比较弱。'","frequency_cap":2,"frequency_cap_note":"整篇最多豁免 2 次。超过即判输出不合格，必须重写。","window":60,"window_note":"豁免说明必须紧跟在该词之后 60 字内。窗口太宽等于放行任意超纲词。"},"false_positive_guards":[{"word":"容重","not_part_of":["内容重"],"why":"闸门是子串匹配，「内容重复」「内容重要」里的「容重」不是土壤容重。必须用「与安全词组重叠」判定——写成 not_preceded_by 会错，因为「内容重复」里「容重」前面只剩一个「内」。"},{"word":"矿化","not_preceded_by":["地下水","水矿化","咸水矿化"],"why":"「地下水矿化度」是水利术语，与土壤腐殖化无关。"},{"word":"EC","not_within_ascii_word":true,"why":"避免在 PROJECT / SPEC / RESPECT 这类英文单词里误报。"},{"word":"ESP","not_within_ascii_word":true,"why":"同上。"}]},"green":{"meta":{"name":"绿色化学评价细则","purpose":"把绿色化学从术语变成学生能回答的问题，并给出课标依据。","curriculum_anchor":"《义务教育化学课程标准（2022年版）》主题五：5.1「使用科学技术时要考虑其对社会和环境的影响」「树立人与自然和谐共生的科学自然观和绿色发展观」；5.2「知道资源开发、能源利用和材料使用可能会对环境产生影响，树立环保意识」；5.4.2「现代科学技术的开发和应用可能会引起与生态环境、伦理道德、经济发展等相关的问题」。另：2011版「认识合理使用化肥、农药对保护环境的重要意义」。","position":"绿色化学在评价中既单列为专项栏（第 3 维度），也渗透进其他六个维度的评语。"},"five_questions":[{"id":"q1_source","question":"你用的东西是天然就有的，还是要高温烧出来、费很大劲造出来的？","expert_term":"原料可再生性、能耗","why_it_matters":"石灰石粉直接粉碎就能用，熟石灰和生石灰要先经高温煅烧。同样的改良效果，能耗相差很大。","look_for":["学生是否选了石灰石粉这类低能耗原料","是否意识到熟石灰/生石灰的生产要消耗大量能源","是否优先就地取材（草木灰、有机肥、绿肥）"]},{"id":"q2_dosage","question":"用量是不是刚好够？会不会用多了？","expert_term":"用量克制、避免过量","why_it_matters":"『多加点效果更好』是最常见也最有害的误解。过量石灰会让土壤变碱、营养被锁住、土壤板结。","look_for":["有没有给出用量，而不只是『加石灰』","有没有『越多越好』『多加一点』这类表述","用量量级是否与场地规模匹配"]},{"id":"q3_toxicity","question":"它本身有毒吗？有腐蚀性吗？对人安全吗？","expert_term":"低毒无害、本质安全","why_it_matters":"强酸强碱能快速改变 pH，但也带来腐蚀、灼伤和土壤生态破坏的风险。温和的碱（熟石灰、石灰石粉、草木灰）才是农业选择。","look_for":["是否使用氢氧化钠、盐酸、硫酸等强酸强碱","是否写了防护措施","是否理解『反应快』不等于『好办法』"]},{"id":"q4_byproduct","question":"用完之后，会不会留下新的麻烦？","expert_term":"副产物与二次污染","why_it_matters":"过量石灰会造成营养元素被锁住和土壤板结——把一个问题的解法变成了另一个问题。灌水洗盐若排不出去，会造成盐分回积。","look_for":["是否考虑过量带来的副作用","灌水洗盐是否考虑了排水出路","是否考虑对土壤生物的影响"]},{"id":"q5_prevention","question":"能不能从源头上就少制造这个问题，而不是等出了再治？","expert_term":"源头预防优于末端治理","why_it_matters":"很多农田变酸，根源是长期过量施用化肥。与其反复施石灰去治，不如先把施肥合理化。这是绿色化学最核心的理念，也是最能体现思维深度的一点。","look_for":["是否提到合理施肥、减少化肥用量","是否提到从根本上改善土壤（增施有机肥、种绿肥）","是否只想着『把 pH 调过来』而不问为什么会变酸/变碱"]}],"bonus_indicators":[{"id":"local_material","name":"就地取材","desc":"用本地容易获得的材料，减少运输能耗。"},{"id":"renewable","name":"可再生","desc":"优先选择动植物来源、能再生的材料（有机肥、绿肥、秸秆）。"},{"id":"degradable","name":"可降解","desc":"避免使用难降解材料（如塑料地膜），优先用秸秆覆盖。"},{"id":"water_saving","name":"节约用水","desc":"灌水洗盐是耗水措施，应意识到水资源代价。"}],"prompt_rule":"评价绿色化学时，用『五个问题』逐条对照，但输出时不要机械地写成五问五答；应挑出学生真正做到了和真正漏掉的各一两点来说，并指明课标层面的理由（如『合理使用化肥』）。"},"constraints":{"meta":{"name":"土壤改良措施 · 参考方案","purpose":"给 AI 的**经验参考**，不是判定依据。它不参与任何代码判定。","usage":"整份作为「参考方案」段落进打分调用的静态 system 前缀；模型可以不听它的——不在表里的做法照样能判。","what_changed":"本表曾是「约束条款表」：要求 AI 引用条款 id、并按条款强度钳制等级。那套机制已全部移除——现在 AI 全自主打分。","note":"内核不读 rule_level，不做条款 id 校验，不做等级钳制，也不做证据比对（证据比对只针对 AI 输出的 evidence 字段）。","experience_levels":{"forbidden":"经验上认为不能用于改良土壤","ineffective":"经验上认为做了等于没做","limited":"方向对但作用有限","caution":"可以用，但有关键禁忌","ok":"常规可用的做法"}},"measures":[{"id":"lime-hydrated","name":"熟石灰","aliases":["熟石灰","氢氧化钙","消石灰","Ca(OH)2","石灰"],"rule_level":"caution","say":"熟石灰是碱，能和土里的酸发生中和反应，把酸性降下来——这正是课本里讲的『熟石灰改良酸性土壤』。","cautions":["加多了会让土壤变碱，铁、锌等营养元素会被『锁住』，植物吸不到，叶子发黄。","不能和铵态氮肥（如硫酸铵）或腐熟人畜粪尿混用，否则氮会变成气体跑掉，白施肥。","用量必须按土壤和面积算，土越黏、有机质越多，需要的量越大；不能凭感觉加。","改良是渐进的，不是立刻见效，需要过一段时间复测 pH。"]},{"id":"limestone-powder","name":"石灰石粉","aliases":["石灰石粉","碳酸钙","石灰石","CaCO3","大理石粉"],"rule_level":"ok","say":"这个选择其实比熟石灰更『绿色』。石灰石粉是天然矿物，碾碎就能用，不用像熟石灰那样高温烧出来，省能源；而且它反应得慢、温和，不容易一下子把土调得太碱。","cautions":["起效慢，需要的时间更长。","同样需要控制用量。"]},{"id":"quicklime","name":"生石灰","aliases":["生石灰","氧化钙","CaO"],"rule_level":"caution","say":"方向是对的，但生石灰遇到水会放出大量的热，很危险，绝对不能用手直接碰，也不能在有水的时候凑近看。","cautions":["遇水剧烈放热，会烫伤，必须戴手套护目镜，严禁用手接触。","中和能力很强，极易过量，一旦过量很难挽回。","同样不能和铵态氮肥混用。"]},{"id":"plant-ash","name":"草木灰","aliases":["草木灰","灰肥","稻草灰"],"rule_level":"caution","say":"这是很聪明的传统办法。草木灰里有碳酸钾，它的水溶液是碱性的，能中和土里的酸，还顺便补了钾肥。","cautions":["绝对不能和铵态氮肥混用，碱性会让氮变成气体跑掉。","用量不好控制，碱性强度不如熟石灰稳定。","注意草木灰的来源，烧塑料之类的灰不能用。"]},{"id":"acid-soil-substrate","name":"松针土 / 腐叶土 / 泥炭","aliases":["松针土","腐叶土","泥炭","酸性土","山泥"],"rule_level":"caution","say":"对盆栽的喜酸植物来说，换用松针土或腐叶土是很实际的思路——它们本身就偏酸，还顺便让土更疏松、更保水保肥。","cautions":["只适合盆栽或小面积，大田用量不现实。","未腐熟的松针直接埋进土里，分解时会和植物抢氮，反而让植物长不好，要用腐熟过的。","泥炭是不可再生资源，开采有环境代价，从绿色化学角度要慎用、少用。"]},{"id":"sulfur","name":"硫磺粉","aliases":["硫磺粉","硫磺"],"rule_level":"caution","say":"这是园艺上真实在用的办法，但要靠土里的微生物慢慢把它变成酸，所以见效很慢，通常要几个月。它本身不是酸，直接拿它去『中和』是说不通的。","cautions":["见效很慢（数月），不适合想马上看到效果的探究。","依赖土壤微生物活动，土太贫瘠或太干时几乎不起作用。","用量不易掌握。"]},{"id":"lime-water","name":"石灰水","aliases":["澄清石灰水","石灰水","氢氧化钙溶液"],"rule_level":"ineffective","say":"石灰水确实是碱，方向没想错，但它太稀了——它是氢氧化钙的稀溶液，里面能跟酸反应的东西少得可怜。倒一桶下去，能中和的酸可能还不如撒一小把石灰石粉。而且土壤会『扛住』酸碱变化，这点石灰水的效果很快就被吃掉。名字很像，但能真正改土的是石灰石粉或熟石灰，而且用量要按面积算。","cautions":["澄清石灰水浓度极低，改土效果可以忽略。","不要和「石灰石粉」「熟石灰」混为一谈——名字像，能改土的是后两者。"]},{"id":"vinegar","name":"食醋","aliases":["食醋","醋","醋酸","白醋"],"rule_level":"limited","say":"食醋确实是酸，方向想对了，但它是弱酸，土的『扛酸碱能力』会把它的作用吃掉一大半，所以降 pH 的效果很小、很不持久。如果你只是想在花盆里试一试、看看现象，可以；要真的改良一块地，它做不到。","cautions":["效果弱且不持久，无法用于实际改土。","市售食醋含盐和其他添加物，长期大量使用会给土壤带入盐分。","作为课堂演示『酸能中和碱』是可以的，作为改良方案则不合格。"]},{"id":"organic-manure","name":"有机肥 / 腐熟农家肥","aliases":["有机肥","农家肥","腐熟","堆肥","厩肥","粪肥"],"rule_level":"ok","say":"这是很稳的一步，几乎对所有土都有好处。有机肥能让土更疏松、更能存住水和养分，也能让土自己更『扛得住』酸碱的变化。而且它来自动植物残体，是能再生的。","cautions":["必须充分腐熟，未腐熟的会烧根、带病菌虫卵。","起效慢，属于长期培肥，不是快速调 pH 的手段。","要注意来源，避免重金属和抗生素残留。"]},{"id":"green-manure","name":"种植绿肥","aliases":["绿肥","紫云英","苜蓿","翻压"],"rule_level":"ok","say":"这是最『绿色』的做法之一。种一茬绿肥再翻进土里，等于让植物自己帮土壤攒有机质，不用额外的化肥，也没有污染。缺点是需要时间和土地。","cautions":["需要一季的时间，学生短期探究看不到效果。","需要土地能空出来种。"]},{"id":"straw-return","name":"秸秆还田","aliases":["秸秆还田","稻草还田","秸秆"],"rule_level":"caution","say":"方向很好，能让土更肥更松。但要注意一点：秸秆分解的时候，土里的微生物要『吃』氮，会和作物抢，所以还田时通常要额外补一点氮肥，不然作物反而发黄。","cautions":["碳氮比高，需配施氮肥，否则微生物与作物争氮。","要切碎、翻埋，还要注意病虫害残体不能直接还田。","见效需要时间。"]},{"id":"gypsum","name":"石膏","aliases":["石膏","硫酸钙","CaSO4","磷石膏"],"rule_level":"caution","say":"这是改良碱土的一种真实办法：石膏里的钙能把土里『占位』的钠换出来，再配合浇水把钠排走。不过它主要对付的是『钠太多』的碱土，如果只是普通偏碱，用它的必要性不大。","cautions":["只针对钠质碱土，普通偏碱土壤不必要。","必须配合灌水排水，否则钠排不出去。","工业副产石膏要检测重金属等有害物质。"]},{"id":"leaching","name":"灌水洗盐 + 排水","aliases":["灌水洗盐","洗盐","排水","漫灌","冲洗"],"rule_level":"caution","say":"思路是对的：盐能溶在水里，用水把它冲下去。但有一个前提很关键——**水必须能排走**。如果排不出去，太阳一晒水蒸发了，盐又跟着回到土表面，反而更严重。","cautions":["必须有排水出路，否则越浇越糟。","地下水位高的地方不能大水漫灌。","要注意节约用水，避免浪费和污染地下水。"]},{"id":"mulch","name":"覆盖抑盐","aliases":["覆盖","地膜","秸秆覆盖","抑盐"],"rule_level":"ok","say":"这个思路很巧：盐是跟着水往上跑的，盖上东西减少蒸发，盐就不容易积到表面来。","cautions":["只是辅助措施，不能单独解决盐分问题。","地膜是塑料，回收不好会造成白色污染，用秸秆覆盖更绿色。"]},{"id":"sand-amend","name":"掺沙","aliases":["掺沙","加沙","沙土"],"rule_level":"caution","say":"黏土太闷，掺点沙能让它透气透水。但关键是比例——沙加少了没用，加太多又会变成漏水漏肥的沙土，得有个合适的量。","cautions":["比例很关键，掺少了无效，掺多了适得其反。","只改善物理性状，不改变酸碱度。","取沙不能破坏河道，环保上要注意来源。"]},{"id":"clay-amend","name":"掺黏土 / 掺塘泥","aliases":["掺黏土","掺塘泥","加黏土"],"rule_level":"caution","say":"沙土存不住水也存不住肥，掺点黏土能补上这个短板。同样要注意比例和混匀。","cautions":["比例要合适，否则影响通气。","塘泥要注意是否受污染。"]},{"id":"acid-fertilizer","name":"施用酸性肥料（如硫酸铵）","aliases":["硫酸铵","酸性肥料","生理酸性肥料","过磷酸钙"],"rule_level":"caution","say":"这类肥料长期用确实会让土慢慢变酸，所以对偏碱的土有点帮助。但它本来是肥料，不是专门用来调 pH 的，靠它来降 pH 会很慢，而且用多了还会污染地下水。","cautions":["降 pH 速度慢，不是专门调碱手段。","过量施用会造成土壤酸化、水体污染。","这才是很多农田变酸的真正原因——从源头看，要合理施肥。"]},{"id":"crop-selection","name":"改种适应这种土壤的作物","aliases":["改种","种耐酸","种耐碱","适地适种","换作物"],"rule_level":"ok","say":"这个想法很成熟：与其费很大劲去改造土，不如先种适合这种土的作物。比如酸性土可以种马铃薯、茶树，偏碱的土可以种棉花、甜菜。这样既省钱，又不会给土壤带来新的负担。","cautions":["要考虑市场需求和经济效益，不能只看能不能活。","长期看土壤还是需要培肥。"]},{"id":"sodium-hydroxide","name":"氢氧化钠（烧碱）","aliases":["氢氧化钠","烧碱","火碱","NaOH"],"rule_level":"forbidden","say":"这个方向虽然也是『用碱中和酸』，但氢氧化钠是强碱，腐蚀性很强，会烧伤皮肤和眼睛；而且它太『猛』了，稍微多一点土就变成强碱，植物根本活不了。改土要用温和的碱，比如熟石灰或石灰石粉。","cautions":["强腐蚀性，严禁接触皮肤和眼睛。","中和能力过强，极易造成土壤过度碱化，不可逆。","是实验室药品，不是农业投入品。"]},{"id":"hydrochloric-acid","name":"稀盐酸 / 稀硫酸","aliases":["稀盐酸","盐酸","稀硫酸","硫酸","HCl","H2SO4"],"rule_level":"forbidden","say":"这里有两个问题。第一，盐酸和硫酸都是强酸，有强烈腐蚀性，会烧伤皮肤和眼睛，也会把土壤里的微生物杀死、破坏土壤结构。第二，如果这块土里本来就含有石灰石（碳酸钙），你加的酸会被它『抵消』掉——就像把醋倒进石灰水里，冒完气泡就没了，土壤的碱一点没变。所以这是又危险又可能白做的事。","cautions":["强腐蚀性，严重伤害皮肤、眼睛和呼吸道。","会杀死土壤微生物，破坏土壤结构。","对石灰性土壤完全无效。","过量造成不可逆的强酸化。"]},{"id":"over-liming","name":"大量 / 过量施用石灰","aliases":["大量石灰","多加石灰","越多越好","过量"],"rule_level":"forbidden","say":"『多加点效果更好』这个想法要改。石灰加过头，土会变成碱性，铁、锌这些营养元素会被『锁住』，植物吸不到，叶子反而发黄长不好；土还会变硬板结。改良土壤讲究的是『刚好够』，不是越多越好。","cautions":["过量导致营养元素被锁住，植物缺素黄化。","造成土壤板结。","一旦过碱很难逆转。"]},{"id":"distilled-water-wash","name":"用蒸馏水 / 纯净水冲洗土壤","aliases":["蒸馏水冲洗","纯净水冲洗","用水冲酸碱"],"rule_level":"ineffective","say":"这个办法基本不起作用。土壤的酸碱性不是像盐那样『浮在表面』能被水冲走的，它来自土壤本身。你可以回忆一下：加热蒸发食盐水能得到盐，但土壤的酸碱性靠冲水是冲不掉的。","cautions":["对土壤酸碱度基本无效。","大量用水还会把养分冲走（这一点反而是负面的）。"]},{"id":"direction-reversed","name":"材料方向与土壤相反","aliases":[],"rule_level":"forbidden","say":"这块土实测是酸的，你却用了会让它更酸的东西（或者反过来）。方向反了，不但没用，还会让问题加重。判断方向只看实测的 pH 值：大于 7 往「降」的方向调，小于 7 往「升」的方向调。","cautions":["判断方向只依据实测 pH，不看学生自己的描述。","学生若把土壤说反了，先纠正这一点，再谈材料。"]}]},"plantPh":{"meta":{"name":"常见作物适宜 pH 区间","purpose":"用于判断学生设定的『目标 pH』是否合理，以及改良方向是否符合所种作物。","source_note":"以下区间为常见栽培资料的通行范围。不同资料、不同品种、不同地区会有出入，因此保留较宽区间，不当作精确阈值使用。若学生给的目标落在区间外，应引导讨论而不是直接判错。","usage_rule":"判定目标 pH 是否合理时，采用『区间 + 容差』的方式：落在区间内为合理；略超出但在容差（±0.5）内视为可接受但需说明理由；明显超出且无理由才是问题。"},"groups":[{"id":"acid_loving","name":"喜酸植物","range":[4.5,6],"plants":[{"name":"杜鹃","range":[4.5,6],"note":"典型的喜酸植物，碱性土上会黄化、生长不良"},{"name":"山茶","range":[5,6],"note":""},{"name":"栀子","range":[5,6],"note":""},{"name":"蓝莓","range":[4.5,5.5],"note":"对pH要求最严的常见果树之一"},{"name":"茶树","range":[4.5,5.5],"note":""},{"name":"马铃薯","range":[5,5.5],"note":"耐酸，酸性土还能减轻疮痂病"},{"name":"马尾松","range":[4.5,6],"note":"常见酸性土指示植物"}]},{"id":"neutral","name":"微酸至中性作物","range":[6,7],"plants":[{"name":"水稻","range":[5.5,6.5],"note":"耐酸性相对较强"},{"name":"玉米","range":[6,7],"note":""},{"name":"大豆","range":[6,7],"note":""},{"name":"小麦","range":[6,7.5],"note":"跨微酸到微碱"},{"name":"番茄","range":[6,7],"note":""},{"name":"白菜","range":[6,7],"note":""},{"name":"萝卜","range":[6,7],"note":""},{"name":"菠菜","range":[6,7],"note":""},{"name":"苹果","range":[6,7],"note":""},{"name":"桃","range":[6,7],"note":""}]},{"id":"alkaline_tolerant","name":"中性至耐碱作物","range":[6.5,8],"plants":[{"name":"棉花","range":[6,8],"note":"耐碱能力较强"},{"name":"甜菜","range":[6.5,8],"note":"耐碱"},{"name":"苜蓿","range":[6.5,7.5],"note":"耐碱，可作绿肥"},{"name":"高粱","range":[6,8],"note":"耐碱"},{"name":"向日葵","range":[6,7.5],"note":""},{"name":"葡萄","range":[6,7.5],"note":""}]}],"diagnostic_plants":[{"name":"马尾松、映山红、铁芒萁","indicates":"酸性土壤","note":"地理学上的酸性土指示植物"},{"name":"碱蓬、盐蒿、柽柳","indicates":"盐碱土壤","note":"盐碱地指示植物"},{"name":"蚯蚓数量多","indicates":"土壤较健康","note":"蚯蚓偏好中性、有机质较丰富的土壤，强酸强碱和盐分高的土里很少"}],"ph_reference":[{"range":[0,4.5],"label":"强酸性"},{"range":[4.5,5.5],"label":"酸性"},{"range":[5.5,7],"label":"弱酸性"},{"range":[7,8],"label":"弱碱性"},{"range":[8,9.5],"label":"碱性"},{"range":[9.5,14],"label":"强碱性"}],"ph_boundary_note":"分界按初三化学事实：pH < 7 酸性、pH = 7 中性、pH > 7 碱性。因此 6.8 归「弱酸性」，不是「中性」——这一点与学生答卷必须一致，否则学生答「6.8 呈酸性」会被误判。土壤学上有时把 6.5–7.5 视为「接近中性」，那是农业习惯口径，不作为本工具的判定标准；若教师要用该口径，应在此表和 rubric 中同时改。"},"severity":{"meta":{"name":"问题严重度分级规则","purpose":"把『实事求是』落成可执行的规则：区分原理错误、考虑不周、表述不严谨，不许混为一谈。","output_rule":"主要问题必须按严重度从高到低排列，最多列 3 条。L1 必须列在最前，且必须写明『为什么错』和『正确方向是什么』。"},"levels":[{"id":"L0","name":"无问题","meaning":"这一项做对了，或本来就是合理的。","action":"写进亮点，具体说明对在哪里。"},{"id":"L1","name":"原理错误 / 危险","meaning":"化学原理讲错了、措施方向与土壤相反、使用了危险物质，或选了根本无效的做法。","action":"必须明确指出，必须给出正确方向，并追问『你觉得为什么要这样做』。命中 1 条 L1，总评即为『待改进』（见 grading）。"},{"id":"L2","name":"考虑不周","meaning":"方向对，但漏掉了用量、副作用、混用禁忌、排水条件、时间安排等关键约束。","action":"作为改进建议提出，说明补上之后方案会好在哪里。语气是补充，不是否定。"},{"id":"L3","name":"表述不严谨","meaning":"用语不准确、把『可能』说成『一定』、单位或数量级不统一。","action":"一句话提醒即可，不占用主要问题的位置。"}],"grading":{"l1_grade":"待改进","l1_grade_note":"只要命中 1 条 L1（危险做法 / 原理错误 / 方向相反 / 根本无效 / 用量观念错），总评即为「待改进」。这是等级制的下限档，必须可达——原先代码把 L1 一律封顶到「合格」，导致最该严厉指出的情况永远拿不到最严厉的档。","l1_exempt_dimensions":[],"note":"分数到等级的映射以 rubric.meta.radar.score_map 为准，此处不重复定义，避免两份数据漂移。"},"rules":[{"id":"r_dangerous","when":"匹配到的措施 verdict = dangerous","severity":"L1","reason":"本身危险或方向完全错误。"},{"id":"r_ineffective","when":"匹配到的措施 verdict = ineffective","severity":"L1","reason":"根本无效，说明学生对原理有误解，必须纠正。"},{"id":"r_direction_reversed","when":"措施 applies_to = acidic 但土壤为碱性；或 applies_to = alkaline 但土壤为酸性","severity":"L1","reason":"措施方向与土壤相反，会加重问题。无论该措施本身多安全，方向错了就是 L1。"},{"id":"r_overuse","when":"方案出现「越多越好 / 多加一点 / 大量施用」这类用量误解（内核 overuseDetected）","severity":"L1","reason":"用量观念错误会直接烧苗、伤根、毁土，属安全性问题，不是细节问题。"},{"id":"r_caution_unaddressed","when":"措施 verdict = correct_with_caution，且学生方案中未提及该措施的 cautions 任何一条","severity":"L2","reason":"方向对，但漏了关键约束。"},{"id":"r_caution_addressed","when":"措施 verdict = correct_with_caution，且学生已提及至少一条 cautions","severity":"L0","reason":"学生已经意识到风险，应作为亮点肯定。"},{"id":"r_limited","when":"匹配到的措施 verdict = limited","severity":"L2","reason":"原理成立但作用有限，需要说明适用边界。"},{"id":"r_correct","when":"匹配到的措施 verdict = correct","severity":"L0","reason":"正确措施。"},{"id":"r_no_dosage","when":"方案未给出任何用量信息","severity":"L2","reason":"没有用量就无法执行，也无法判断会不会过量。"},{"id":"r_no_target","when":"方案未设定目标 pH","severity":"L2","reason":"没有目标就不知道改良到什么程度算成功。"},{"id":"r_no_retest","when":"方案未设计改良后的复测","severity":"L2","reason":"不复测就无法判断有没有效果，探究不闭环。"},{"id":"r_no_control","when":"方案未设置对照","severity":"L2","reason":"没有对照就无法确定是改良起了作用，而不是别的原因。"},{"id":"r_no_safety","when":"使用了需要防护的材料（生石灰、熟石灰、强酸强碱、草木灰）但全文未提任何防护措施","severity":"L2","reason":"安全是底线要求。"},{"id":"r_crop_mismatch","when":"设定的目标 pH 明显偏离所种作物的适宜区间（超出容差 ±0.5），且无说明理由","severity":"L2","reason":"目标与作物需求不匹配。"},{"id":"r_overclaim","when":"出现『一定能』『保证』『彻底解决』等断言，或对大面积施用作承诺","severity":"L3","reason":"科学表述应留有余地。"}],"tone_rules":["不因对象是初中生就降低专业性：原理错了就是错了，要明说。","不因要显得专业就堆术语：每个判断都要落到学生能懂的话，出口前过术语闸门。","不说『你的方案不行』，要说『在什么条件下你的方案可行、在什么条件下会出问题』。","亮点必须具体到方案里的某一句话，不许写『思路清晰』这类空话。","追问要问『你觉得为什么要这样做』，把思考权还给学生，而不是直接给答案。"]}};
+
+
+const LEVEL_SCORE = { 优秀: 3, 良好: 2, 合格: 1, 待改进: 0 };
+
+/* ============================================================
+ * 1. 基础判定
+ * ============================================================ */
+
+/** pH → 酸碱等级标签。分界按初三化学事实：<7 酸性、=7 中性、>7 碱性。 */
+function classifyPh(ph) {
+  if (!Number.isFinite(ph)) return '未知';
+  if (ph === 7) return '中性';
+  for (const r of DATA.plantPh.ph_reference) {
+    if (ph >= r.range[0] && ph < r.range[1]) return r.label;
+  }
+  return '未知';
+}
+
+/** 酸碱等级 → 改良方向。pH 非有限数时返回 'unknown'，不得默认成 'neutral'。 */
+function directionOf(ph) {
+  if (!Number.isFinite(ph)) return 'unknown';
+  if (ph < 7) return 'acidic';
+  if (ph > 7) return 'alkaline';
+  return 'neutral';
+}
+
+/** 目标作物适宜 pH 查询（支持模糊匹配植物名） */
+function findPlant(name) {
+  if (!name) return null;
+  const key = String(name).trim();
+  for (const g of DATA.plantPh.groups) {
+    for (const p of g.plants) {
+      if (key.includes(p.name) || p.name.includes(key)) {
+        return { ...p, group: g.name, groupRange: g.range };
+      }
+    }
+  }
+  return null;
+}
+
+/** 从方案文本里解析学生设定的目标 pH */
+function parseTargetPh(planText) {
+  const m = /(?:目标|调到|控制在|达到|改良到|降到|升到)\s*(?:pH\s*)?(\d+(?:\.\d+)?)/i.exec(String(planText || ''));
+  return m ? parseFloat(m[1]) : null;
+}
+
+/* ============================================================
+ * 2. 措施识别
+ * ============================================================ */
+
+/** 否定词：出现在关键词前方一小段窗口内时，说明学生是在「不做这件事」或「提醒不要这样做」 */
+const NEGATION = ['不', '别', '勿', '避免', '防止', '不能', '不要', '不宜', '禁止', '无需', '没有'];
+/** 转折连词不是否定：「不但/不仅/不过」里的「不」不否定后面的措施 */
+const ADVERSATIVE = ['不但', '不仅', '不只', '不单', '不过'];
+/** 分句边界：否定只在本分句内有效，跨过分号/逗号/句号就管不到后面 */
+const CLAUSE_BREAK = /[。！？；，、,;：:\n\r]/;
+/** 否定窗口：再多就可能跨语义 */
+const NEG_WINDOW = 8;
+
+const OVERUSE_RE = /越多越好|多(加|用|施|放)(一)?(点|些)|(加|用|施|放)多(一)?(点|些)|用量多|加得越多|大量(施用)?(石灰|熟石灰|生石灰)/g;
+
+/**
+ * 这个位置之前有没有否定/转折——「别多加石灰」不该被当成「越多越好」。
+ *
+ * 两个必须同时成立的约束（都是踩过坑才加的）：
+ *  1) 不跨分句 ——「这个方法不好。我用稀盐酸中和」里的「不好」不能把下一句的盐酸否定掉。
+ *  2) 转折词不是否定 ——「不过我用稀盐酸中和」里的「不过」是转折；原先 ADVERSATIVE
+ *     只列了「不但/不仅/不只/不单」，漏了「不过」，导致最该抓的强酸操作被整句漏检。
+ *
+ * 注意：它曾是 matchMeasures 的辅助函数，那条通道已删；
+ * 但 hasOveruseClaim 仍然依赖它，**不要连它一起删**。
+ */
+function isNegated(text, idx) {
+  let start = Math.max(0, idx - NEG_WINDOW);
+  for (let i = idx - 1; i >= start; i--) {
+    if (CLAUSE_BREAK.test(text[i])) { start = i + 1; break; }
+  }
+  const pre = text.slice(start, idx);
+  if (!pre) return false;
+  if (ADVERSATIVE.some((w) => pre.includes(w))) return false;
+  return NEGATION.some((n) => pre.includes(n));
+}
+
+function hasOveruseClaim(text) {
+  const re = new RegExp(OVERUSE_RE.source, 'g');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (!isNegated(text, m.index)) return true;
+    if (m.index === re.lastIndex) re.lastIndex++;   // 防零宽死循环
+  }
+  return false;
+}
+
+const clauseSay = (id) => (DATA.constraints.measures.find((m) => m.id === id) || {}).say || '';
+
+const normText = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+
+const TOPIC_PATTERNS = {
+  target: /目标\s*pH|调到\s*pH|调到\s*[\d.]|控制在\s*[\d.]|达到\s*pH|改良到|调到\s*(中性|弱酸|弱碱)/,
+  dosage: /用量|用多少|多少(克|公斤|千克|斤|吨)|(\d+(\.\d+)?)\s*(kg|g|公斤|千克|克|斤|吨|kg\/亩)/i,
+  protection: /手套|护目镜|口罩|防护|保护好?(眼睛|手)|小心|注意安全|灼伤|烫伤|不要用手/,
+  mixing: /混用|一起施|同时施|铵态氮|硫酸铵|粪尿|人畜粪|草木灰.*(混|一起)/,
+  retest: /复测|再测|重新测|复查|再检测|对比检测|再看\s*pH|观察效果|测一次/,
+  control: /对照|空白组|比较组|另一组|不处理的/,
+  drainage: /排水|排走|排出去|排水沟|能渗|渗透/,
+  overdoseAware: /过量|不要太多|不能太多|别太多|不宜过多|过多会|加多了会|适量/,
+  prevention: /少施|合理施肥|减少化肥|从源头|根源|为什么会变(酸|碱)|有机肥|绿肥|秸秆还田/,
+  lowEnergy: /天然|直接(粉碎|磨)|不用(高温)?烧|省(能源|电|煤)|煅烧|能耗/,
+  localMaterial: /就地|本地|附近|自家|农家|山上|田间/,
+  cost: /成本|便宜|贵|省钱|费用|经济|划算/,
+  timing: /时间|个月|周|天|见效|多久|什么时候/,
+  soilBiology: /蚯蚓|微生物|小生物|土壤动物|菌/,
+  sideEffect: /叶子发黄|黄化|板结|锁住|吸收不到|变硬/,
+  overclaim: /一定能|保证|彻底解决|绝对|百分百|肯定能/,
+};
+
+function detectTopics(text = '') {
+  const t = String(text);
+  const out = {};
+  for (const [k, re] of Object.entries(TOPIC_PATTERNS)) out[k] = re.test(t);
+  return out;
+}
+
+/* ============================================================
+ * 4. 证据充分性检查 —— 信息不足时不硬评
+ * ============================================================ */
+
+function checkEvidence(input) {
+  const src = input || {};
+  const { ph } = src;
+  const meta = src.meta || {};
+  const canEvaluate = [];
+  const mustAsk = [];
+  const warnings = [];
+
+  // pH 必须是一个 0–14 的有限数，才算「可评」。NaN / -1 / 1e999 都不能当作有 pH。
+  const phOk = typeof ph === 'number' && Number.isFinite(ph) && ph >= 0 && ph <= 14;
+
+  // 措施「方向对不对」依赖 pH —— pH 未知时不能声称化学原理已可评。
+  if (phOk) canEvaluate.push('chemistry');
+  // 绿色化学看材料选择、安全看防护措施，这两项不依赖 pH
+  canEvaluate.push('green', 'safety');
+
+  if (phOk) {
+    canEvaluate.push('diagnosis');
+    if (!meta.measurementMethod) {
+      warnings.push('学生没有说明 pH 是怎么测出来的（试纸 / 比色卡 / pH 计；测的是浸出液还是探头直接插土），只能评价『解读是否合理』，无法判断数据本身可不可靠。');
+      mustAsk.push('你这个 pH 值是怎么测出来的？是测土壤浸出的水，还是把探头直接插进土里？');
+    }
+    if (!meta.samples || meta.samples < 2) {
+      warnings.push('只有一个采样点，无法判断能否代表整块地。');
+      mustAsk.push('你只取了一个点的土吗？同一块地不同位置测出来一样吗？');
+    }
+  } else {
+    mustAsk.push('土壤的 pH 值是多少？是怎么测的？');
+  }
+
+  if (!meta.crop) {
+    mustAsk.push('你打算种什么植物？（不同植物喜欢的 pH 差很多，目标不能一律定成 7）');
+  } else {
+    canEvaluate.push('ecology');
+  }
+
+  if (!meta.scale) {
+    mustAsk.push('这是在花盆里、学校实验田，还是一大片地里做？（用量差好几个数量级）');
+  } else {
+    canEvaluate.push('feasibility');
+  }
+
+  if (!meta.texture) {
+    mustAsk.push('这块土摸起来是偏沙、偏黏，还是松软适中？');
+  }
+
+  canEvaluate.push('completeness'); // 完整性只看方案本身
+
+  return { canEvaluate: [...new Set(canEvaluate)], mustAsk, warnings };
+}
+
+/* ============================================================
+ * 5. 七维评价
+ * ============================================================ */
+
+function mkDim(id, level, comment, evidence = []) {
+  const def = DATA.rubric.dimensions.find((d) => d.id === id);
+  return { id, name: def.name, anchor: def.anchor, level, comment, evidence };
+}
+
+const AMOUNT_UNIT_TO_G = {
+  毫克: 0.001, mg: 0.001, 公斤: 1000, 千克: 1000, kg: 1000,
+  克: 1, g: 1, 斤: 500, 吨: 1000000, t: 1000000,
+};
+const AMOUNT_RE = /(\d+(?:\.\d+)?)\s*(毫克|mg|公斤|千克|kg|克|g|斤|吨|t)(?![a-z])/gi;
+
+/** 从文本里抽出所有「数量 + 单位」，统一折算成克 */
+function extractAmounts(text) {
+  const t = String(text || '');
+  const re = new RegExp(AMOUNT_RE.source, 'gi');
+  const out = [];
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    const unitG = AMOUNT_UNIT_TO_G[String(m[2]).toLowerCase()] ?? AMOUNT_UNIT_TO_G[m[2]];
+    const grams = parseFloat(m[1]) * unitG;
+    if (Number.isFinite(grams)) out.push({ text: m[0], value: parseFloat(m[1]), unit: m[2], grams });
+    if (m.index === re.lastIndex) re.lastIndex++;   // 防零宽死循环
+  }
+  return out;
+}
+
+/**
+ * 场地是花盆/阳台、但用量到了「公斤级」——量级明显偏大。
+ * 抽出来给两处共用：可行性维度打分 + 问题清单（要作为 L1 列出来）。
+ */
+function detectMagnitudeError(input) {
+  const src = input || {};
+  const meta = src.meta || {};
+  const scale = meta.scale || '';
+  if (!/盆|花盆|盆栽|阳台/.test(scale)) return null;
+  const big = extractAmounts(src.planText).filter((a) => a.grams >= 500)
+    .sort((a, b) => b.grams - a.grams)[0];
+  if (!big) return null;
+  return { ...big, scale,
+    message: `给${scale}用「${big.text}」（约 ${Math.round(big.grams)} 克），量级明显偏大——一盆花的土通常只有几公斤到十几公斤，这个用量会把土彻底改坏。` };
+}
+
+const CAUTION_RISK_KEYWORDS = [
+  '过量', '混用', '铵态氮', '板结', '锁住', '手套', '护目镜', '防护', '复测',
+  '排水', '见效', '用量', '烧苗', '灼伤', '连作', '盐分', '有机质', '缓慢', '微生物',
+];
+
+function collectIssues(input, matched, topics, dims) {
+  const src = input || {};
+  const { measures = [], overuseDetected = false } = matched || {};
+  const issues = [];
+  const dir = directionOf(src.ph);
+
+  // 学生把土壤的酸碱方向说反了 —— 这是原理性错误，必须作为 L1 落到总评（待改进）。
+  // 原先它只停在诊断维度的评语里，于是「最该严厉指出的情况」总评仍是「合格」。
+  if (dims.diagnosis && dims.diagnosis.reversed) {
+    issues.push({ level: 'L1', measure: '诊断方向',
+      title: '把土壤的酸碱方向判断反了',
+      detail: `土壤实测 pH ${src.ph}，学生的判断与实测相反。方向反了，后面选什么材料都会跟着错。`,
+      fix: '先按 pH 值重新判断这块土是酸还是碱，再决定加什么。',
+      ask: 'pH 是大于 7 还是小于 7？这决定你该加酸还是加碱——你觉得为什么？' });
+  }
+
+  // 措施本身的问题，现在**全部由 AI 判定提供**（已核验原文证据 + 条款 id + 等级钳制）。
+  // 内核在这里做的事：把判定接上条款措辞、按等级列出来。
+  // 原先这里有一整个从库 verdict / applies_to 生成 L1 的循环 —— 那个 continue
+  // 让「危险物质」与「方向用反了」互斥，把最该强调的那条吞掉了；现在整段删除。
+  for (const m of measures) {
+    let lv = m.level || null;
+    const caut0 = m.cautions || [];
+    const planText = String(src.planText || '') + ' ' + String(src.studentDiagnosis || '');
+    /** 「关键注意事项有没有提到」用确定性关键词判 —— 这个窄问题上内核比模型准 */
+    const cautionMentioned = () => {
+      const riskKeys = CAUTION_RISK_KEYWORDS.filter((k) => caut0.some((c) => c.includes(k)));
+      return riskKeys.length > 0 && riskKeys.some((k) => planText.includes(k));
+    };
+    // 判定层说「没提到」、但学生原文其实点到了 → 内核把这一条压掉。
+    // 这是「内核有权否决 AI」的另一个落点：方向那处是否决它的输入，这里是否决它的结论。
+    if (lv && m.rule_level === 'caution' && caut0.length && cautionMentioned()) lv = null;
+
+    if (lv) {
+      // 错误类条款（没有别名，如「材料方向与土壤相反」）名字本身就是一句问题陈述，
+      // 再加后缀会读成「…相反不能用来改良土壤」。材料类条款才需要补那句。
+      const isErrorClause = !(m.aliases && m.aliases.length);
+      const title = isErrorClause ? m.name
+        : m.rule_level === 'forbidden' ? `${m.name}不能用来改良土壤`
+          : m.rule_level === 'ineffective' ? `${m.name}这个方法不起作用`
+            : m.rule_level === 'limited' ? `${m.name}的作用比想象中小`
+              : `${m.name}方向对，但有个关键注意事项没提到`;
+      issues.push({
+        level: lv, measure: m.name, rule: m.id, rule_level: m.rule_level,
+        evidence: m.evidence || '',
+        title,
+        detail: (m.why || m.say || '').trim(),
+        fix: m.fix || (m.rule_level === 'forbidden'
+          ? '换成温和的、农业上真正在用的材料。' : '把这一条补进方案。'),
+        ask: m.ask || `你觉得为什么「${m.name}」在这里不合适？`,
+      });
+      continue;
+    }
+
+    // AI 没判这一条有问题时，内核再用「注意事项有没有提到」补一刀（确定性规则，不依赖模型）
+    if (m.rule_level === 'caution' && (m.cautions || []).length) {
+      const caut = m.cautions;
+      if (!cautionMentioned()) {
+        issues.push({ level: 'L2', measure: m.name, rule: m.id, rule_level: 'caution',
+          title: `${m.name}方向对，但有个关键注意事项没提到`,
+          detail: caut[0], fix: '把这一条写进方案，它会让方案从「能做」变成「做得对」。',
+          ask: `你觉得${m.name}用多了会怎么样？` });
+      }
+    }
+  }
+
+  if (overuseDetected) {
+    issues.push({ level: 'L1', measure: '用量观念', rule: 'over-liming', rule_level: 'forbidden',
+      title: '「多加点效果更好」这个想法要改',
+      detail: clauseSay('over-liming'),
+      fix: '用量要按土壤和面积算，目标是「刚好够」，不是「越多越好」。',
+      ask: '石灰加多了，为什么植物反而长不好？' });
+  }
+
+  // 用量量级错：花盆级容器却按「公斤」下料。这是安全性问题，按 L1 列出来，
+  // 不再只体现在可行性维度的分数里（原先量级错误永远进不了问题清单）。
+  const mag = detectMagnitudeError(src);
+  if (mag) {
+    issues.push({ level: 'L1', measure: '用量量级',
+      title: '用量量级明显不对',
+      detail: mag.message + ' 土壤改良的用量必须和土量匹配，差一个数量级，结果会从「有效」直接变成「毁土」。',
+      fix: '按容器或地块的土量重新算：先估土重，再按推荐用量折算，并写明怎么称、怎么拌。',
+      ask: '同样一句「加 5 公斤石灰」，倒进花盆和撒在一亩地里，结果会一样吗？为什么？' });
+  }
+
+  if (dims.completeness.level === '待改进' || dims.completeness.level === '合格') {
+    if (!topics.dosage) issues.push({ level: 'L2', measure: '用量', title: '没有说用量',
+      detail: '没有用量就无法执行，也没法判断会不会过量。', fix: '补上：用多少、怎么施、施在哪里。',
+      ask: '如果不写用量，别人照着你的方案做，会发生什么？' });
+    if (!topics.retest) issues.push({ level: 'L2', measure: '复测', title: '没有设计复测',
+      detail: '改良完不复测，就无法判断有没有效果。', fix: '补上：过多久再测一次 pH，用什么办法测。',
+      ask: '你怎么知道你的改良到底有没有起作用？' });
+    if (!topics.control) issues.push({ level: 'L2', measure: '对照', title: '没有设置对照',
+      detail: '没有对照，就无法确定是改良起了作用，而不是天气、浇水等别的原因。',
+      fix: '补上：留一组不处理的土作对比。', ask: '如果改良后植物长好了，你怎么排除是别的原因？' });
+  }
+
+  // 目标 pH（对应 severity.json 的 r_no_target，原先只写在数据里、代码没实现）
+  if (!topics.target && parseTargetPh(src.planText) === null &&
+      (dims.completeness.level === '待改进' || dims.completeness.level === '合格')) {
+    issues.push({ level: 'L2', measure: '目标pH', title: '没有明确改良目标',
+      detail: '没有目标 pH，就不知道改到什么程度算成功，也无法判断「够了没有」。',
+      fix: '写明目标 pH，并说明为什么定这个值——它取决于你种什么。',
+      ask: '你觉得改良到什么程度算成功？这个标准是谁定的？' });
+  }
+
+  // 需要防护的材料却没写防护——这条原先是模型补充通道抓到的，现在补成确定性规则，
+  // 不再依赖模型是否想得到（对应 severity.json 的 r_no_safety）
+  const needsProtection = measures.some((m) =>
+    ['quicklime', 'lime-hydrated', 'sodium-hydroxide', 'hydrochloric-acid', 'plant-ash'].includes(m.id));
+  if (needsProtection && !topics.protection) {
+    issues.push({ level: 'L2', measure: '安全防护', title: '没有写怎么保护人',
+      detail: '方案里没有提到任何防护措施。石灰类会刺激皮肤和眼睛，强酸强碱更危险——戴什么、谁在场、溅到手上怎么办、没用完的怎么处理，这些都要写进方案。',
+      fix: '补上：戴护目镜和手套、老师在场、废液和剩余材料怎么处理。',
+      ask: '如果材料溅到手上或眼睛里，你的方案里有没有应对办法？' });
+  }
+
+  // 目标 pH 与作物是否匹配
+  const targetPh = parseTargetPh(input.planText);
+  const plant = findPlant(input.meta?.crop);
+  if (targetPh !== null && plant) {
+    const [lo, hi] = plant.range;
+    if (targetPh < lo - 0.5 || targetPh > hi + 0.5) {
+      issues.push({ level: 'L2', measure: '目标pH',
+        title: `目标 pH ${targetPh} 和${plant.name}的需求对不上`,
+        detail: `${plant.name}适宜生长的 pH 是 ${lo}–${hi}，你把目标定在 ${targetPh}，偏离得比较多。土壤不是越中性越好，要看种的是什么。`,
+        fix: `把目标调整到 ${lo}–${hi} 之间，并说明为什么这样定。`,
+        ask: `你觉得为什么不能把所有土壤都调到 pH 7？` });
+    }
+  }
+
+  if (topics.overclaim) {
+    issues.push({ level: 'L3', measure: '表述', title: '表述说得太满',
+      detail: '「一定能」「保证」这类说法不严谨。', fix: '改成「可能会」「在这个条件下预期会」。', ask: null });
+  }
+
+  const rank = { L1: 0, L2: 1, L3: 2 };
+  issues.sort((a, b) => rank[a.level] - rank[b.level]);
+  return issues;
+}
+
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * 误报压制：闸门是子串匹配，数据里的 false_positive_guards 必须真正生效，
+ * 否则「内容重复」会被判成「容重」、「PROJECT」会被判成「EC」、
+ * 「地下水矿化度」会被判成「矿化」。
+ */
+function isGuardSuppressed(word, text, idx, spanLen) {
+  const len = Number.isFinite(spanLen) ? spanLen : word.length;
+  for (const gd of (DATA.termGate.false_positive_guards || [])) {
+    if (gd.word !== word) continue;
+    if (gd.not_within_ascii_word) {
+      const before = idx > 0 ? text[idx - 1] : '';
+      const after = idx + len < text.length ? text[idx + len] : '';
+      if (/[A-Za-z0-9]/.test(before) || /[A-Za-z0-9]/.test(after)) return true;
+    }
+    for (const p of (gd.not_preceded_by || [])) {
+      if (p && idx >= p.length && text.slice(idx - p.length, idx) === p) return true;
+    }
+    // 与「安全词组」重叠即压制。比 not_preceded_by 更适用：
+    // 「内容重复」里的「容重」前面只有一个「内」，用前缀匹配写不对。
+    for (const p of (gd.not_part_of || [])) {
+      if (!p) continue;
+      let at = text.indexOf(p);
+      while (at !== -1) {
+        if (at < idx + len && at + p.length > idx) return true;
+        at = text.indexOf(p, at + 1);
+      }
+    }
+  }
+  return false;
+}
+
+/* ------------------------------------------------------------
+ * 闸门的归一化匹配
+ * ------------------------------------------------------------
+ * 原先闸门是逐字 indexOf，学生/模型只要在词中插一个空格、换行、顿号，
+ * 或写繁体、全角，就能整个绕过（验收攻击矩阵 32 条里漏过 25 条）。
+ *
+ * 这里改成：先把文本折叠成「比对用副本」再匹配，同时保留
+ * norm[i] → 原文下标 的映射，所以
+ *   ① 判定用的是折叠后的文本（空格/标点/零宽/全角/繁体都拦得住）；
+ *   ② 报出的位置和长度仍指向**原文**，autoReplace 兜底替换才不会错位。
+ * 折叠本身不改动原文，学生看到的字不会被我改掉。
+ * ------------------------------------------------------------ */
+
+/** 折叠时丢弃：所有空白 + 零宽/格式控制字符 */
+const GATE_DROP = /[\s\u00a0\u1680\u2000-\u200f\u2028\u2029\u202f\u205f\u3000\ufeff]/;
+/** 折叠时丢弃：常见中英分隔标点（插在词中是最典型的绕过手法） */
+const GATE_PUNCT = /[·、,，.。;；:：!！?？"'“”‘’()（）[\]【】<>《》\-—_/\\|｜~～*＊#＃]/;
+/** 繁体 → 简体：只覆盖闸门词表实际用到的 202 个汉字里有繁简差异的那些 */
+const TRAD2SIMP = {
+  產: '产', 體: '体', 衝: '冲', 團: '团', 對: '对', 導: '导', 應: '应', 態: '态', 換: '换',
+  極: '极', 構: '构', 標: '标', 檢: '检', 濟: '济', 漬: '渍', 滲: '渗', 潛: '潜', 熱: '热',
+  狀: '状', 電: '电', 鹽: '盐', 礦: '矿', 礙: '碍', 離: '离', 穩: '稳', 篩: '筛', 紅: '红',
+  紀: '纪', 組: '组', 經: '经', 結: '结', 絡: '络', 緩: '缓', 脅: '胁', 膠: '胶', 脫: '脱',
+  調: '调', 質: '质', 過: '过', 還: '还', 連: '连', 鈣: '钙', 鈉: '钠', 鉀: '钾', 鋁: '铝',
+  鎂: '镁', 間: '间', 陽: '阳', 隨: '随', 飽: '饱', 驗: '验', 黃: '黄', 鹼: '碱', 層: '层',
+  異: '异', 揮: '挥', 損: '损', 顯: '显', 機: '机', 條: '条', 氣: '气', 氫: '氢', 漿: '浆',
+  測: '测', 業: '业', 養: '养', 寫: '写', 況: '况', 準: '准', 區: '区', 發: '发', 乾: '干',
+  裡: '里', 裏: '里', 汙: '污', 襯: '衬', 螯: '螯',
+};
+
+/** 把文本折叠成比对副本，并记录每个副本字符在原文中的下标 */
+function foldForGate(text) {
+  const t = String(text == null ? '' : text);
+  let norm = '';
+  const map = [];
+  for (let i = 0; i < t.length; i += 1) {
+    let ch = t[i];
+    if (GATE_DROP.test(ch) || GATE_PUNCT.test(ch)) continue;
+    // 全角 ASCII → 半角
+    const code = ch.charCodeAt(0);
+    if (code >= 0xFF01 && code <= 0xFF5E) ch = String.fromCharCode(code - 0xFEE0);
+    ch = TRAD2SIMP[ch] || ch;
+    // ASCII 折成小写，让 CEC / cec 这类缩写大小写都能命中
+    if (ch >= 'A' && ch <= 'Z') ch = ch.toLowerCase();
+    norm += ch;
+    map.push(i);
+  }
+  return { norm, map };
+}
+
+/** 词表也走同一套折叠，保证与文本口径一致 */
+function foldWord(w) {
+  return foldForGate(w).norm;
+}
+
+function enforceTermGate(text) {
+  const t = String(text);
+  const violations = [];
+  const ex = DATA.termGate.exemption_rule || {};
+  const WINDOW = Number.isFinite(ex.window) ? ex.window : 60;
+  const MARKERS = (ex.markers && ex.markers.length)
+    ? ex.markers : ['初中不用记', '不用记这个词', '你只要知道'];
+  const CAP = Number.isFinite(ex.frequency_cap) ? ex.frequency_cap : 2;
+
+  const { norm, map } = foldForGate(t);
+
+  for (const g of DATA.termGate.gate) {
+    for (const w of [g.blocked, ...(g.also_blocked || [])]) {
+      const fw = foldWord(w);
+      if (!fw) continue;
+      let idx = norm.indexOf(fw);
+      while (idx !== -1) {
+        const at = map[idx];                                   // 原文起点
+        const atEnd = map[idx + fw.length - 1] + 1;             // 原文终点（不含被丢弃字符之后的）
+        const spanLen = atEnd - at;                            // 原文里这个词实际占多长
+        const rawWord = t.slice(at, atEnd);                    // 原文里实际的样子
+        if (isGuardSuppressed(w, t, at, spanLen)) { idx = norm.indexOf(fw, idx + fw.length); continue; }
+        // 豁免句：该词之后 window 字符内出现豁免标记即视为合规
+        const tail = t.slice(at, at + WINDOW);
+        const exempt = MARKERS.some((m) => tail.includes(m));
+        // 或者附近出现了替代表达
+        const sentence = t.slice(Math.max(0, at - 60), at + 120);
+        const hasAlt = (g.alternatives || []).some((a) => sentence.includes(a.slice(0, 6)));
+        if (!exempt && !hasAlt) {
+          violations.push({
+            word: rawWord, canonical: g.blocked, at, len: spanLen,
+            suggestion: (g.alternatives || [''])[0],
+            context: t.slice(Math.max(0, at - 25), at + 25),
+            folded: fw,
+          });
+        }
+        idx = norm.indexOf(fw, idx + fw.length);
+      }
+    }
+  }
+  const exemptCount = (t.match(new RegExp(MARKERS.map(escapeRe).join('|'), 'g')) || []).length;
+  return {
+    ok: violations.length === 0,
+    violations,
+    exemptCount,
+    exemptOverLimit: exemptCount > CAP,
+  };
+}
+
+/* ============================================================
+ * 7.5 术语闸门自动化 —— 未过闸门自动打回重写
+ * ============================================================ */
+
+/** 生成「打回重写」指令：把违规词与替换说法交回给模型，要求只改表达不改内容 */
+function buildRepairPrompt(violations) {
+  const lines = [
+    '你上一次的输出没有通过「术语闸门」——出现了初三学生读不懂的词。',
+    '请重写，保持内容、判断和结论完全不变，只改表达。',
+    '',
+    '需要替换的词：',
+  ];
+  const seen = new Set();
+  for (const v of violations) {
+    if (seen.has(v.word)) continue;
+    seen.add(v.word);
+    lines.push(`- 「${v.word}」→ 换成「${v.suggestion}」这类说法`
+      + (v.field ? `（出现在：${v.field}）` : ''));
+  }
+  lines.push('');
+  lines.push('规则：');
+  lines.push('1. 每个超纲词都必须当场换成初三能懂的说法，不能只是删掉；');
+  lines.push('2. 如果某个词非用不可，后面必须紧跟一句「初中不用记这个词，你只要知道……」，且全篇最多 2 处；');
+  lines.push('3. 不许改变原有的判断结论——只换说法，不换结论。');
+  lines.push('4. **改完请自己再过一遍全文**：建议信、收尾话、每条问题的标题与说明、'
+    + '「怎么改」、「想一想」、亮点、绿色化学、追问清单——凡是初三课本里没出现过的术语，'
+    + '一律换掉再交。判断标准由你把握，程序只负责复查。');
+  return lines.join('\n');
+}
+
+/** 按违规位置倒序做确定性替换（可选，属于兜底手段，可能读起来生硬）
+ *  优先用 v.len（原文跨度）——归一化匹配时词里可能夹着空格/标点，
+ *  必须整段换掉，否则会留下残字。 */
+function autoReplace(text, violations) {
+  let out = String(text);
+  const sorted = [...violations].sort((a, b) => b.at - a.at);
+  for (const v of sorted) {
+    const len = Number.isFinite(v.len) ? v.len : String(v.word).length;
+    out = out.slice(0, v.at) + v.suggestion + out.slice(v.at + len);
+  }
+  return out;
+}
+
+/**
+ * 闸门 + 修复：接进输出链路的统一入口
+ * @returns {{ok:boolean, violations:Array, directive:string|null, fixed:string|null}}
+ */
+function gateAndRepair(text, opts = {}) {
+  const gate = enforceTermGate(text);
+  return {
+    ...gate,
+    directive: gate.ok ? null : buildRepairPrompt(gate.violations),
+    fixed: (!gate.ok && opts.autoReplace) ? autoReplace(text, gate.violations) : null,
+  };
+}
+
+/* ============================================================
+ * 7.5b 术语闸门 · 全字段版
+ * ------------------------------------------------------------
+ * 原先闸门只扫 renderReport() 的结果，于是「专家的话」那一屏
+ * （建议信 advice + 收尾话 closing）**完全不受检查**——而学生最先读的就是它。
+ * 这里把闸门对准**全部学生可见字段**。
+ *
+ * 判断权归 AI：这里扫出来的命中只是**体检项 / 复查触发器**，
+ * 它不决定"什么算超纲"；真正的判断与改写由模型做（打回重写）。
+ * 只有当模型两次都没改干净时，才用 autoReplaceVisible 做确定性兜底，
+ * 目的是保证学生最终读不到超纲词——而不是让内核代替模型判断。
+ * ============================================================ */
+
+/** 学生能看到的全部文字，逐字段列出 */
+function visibleFields(r) {
+  const out = [];
+  const push = (field, text) => {
+    const s = String(text == null ? '' : text).trim();
+    if (s) out.push({ field, text: s });
+  };
+  push('总评理由', r.overall && r.overall.reason);
+  for (const d of (r.dims || [])) push(`维度评语·${d.name || d.id}`, d.comment);
+  for (const it of (r.issues || [])) {
+    const tag = it.title || '未命名问题';
+    push(`问题标题·${tag}`, it.title);
+    push(`问题说明·${tag}`, it.detail);
+    push(`怎么改·${tag}`, it.fix);
+    push(`想一想·${tag}`, it.ask);
+  }
+  (r.highlights || []).forEach((h, i) => push(`亮点${i + 1}`, h));
+  const g = r.green || {};
+  (g.did || []).forEach((x, i) => push(`绿色化学·已做到${i + 1}`, x));
+  (g.missed || []).forEach((x, i) => push(`绿色化学·可补${i + 1}`, x));
+  (r.mustAsk || []).forEach((q, i) => push(`追问${i + 1}`, q));
+  return out;
+}
+
+/** 扫全部学生可见字段；命中项带 field / raw，便于定向重写与兜底替换 */
+function gateVisible(r) {
+  const fields = visibleFields(r);
+  const violations = [];
+  let exemptCount = 0;
+  let exemptOverLimit = false;
+  for (const f of fields) {
+    const g = enforceTermGate(f.text);
+    for (const v of g.violations) violations.push({ ...v, field: f.field, raw: f.text });
+    exemptCount += g.exemptCount;
+    if (g.exemptOverLimit) exemptOverLimit = true;
+  }
+  return {
+    ok: violations.length === 0,
+    violations,
+    exemptCount,
+    exemptOverLimit,
+    scannedFields: fields.length,
+    directive: violations.length ? buildRepairPrompt(violations) : null,
+    fixed: null,
+    autoReplaced: 0,
+  };
+}
+
+/** 最后兜底：模型两次都没改干净时，按字段做确定性替换。学生最终读不到超纲词。 */
+function autoReplaceVisible(r, violations) {
+  const map = new Map();
+  for (const v of (violations || [])) {
+    if (!v.raw) continue;
+    if (!map.has(v.raw)) map.set(v.raw, []);
+    map.get(v.raw).push(v);
+  }
+  const R2 = (s) => {
+    const arr = map.get(s);
+    return arr ? autoReplace(s, arr) : s;
+  };
+  const out = { ...r };
+  if (r.overall) out.overall = { ...r.overall, reason: R2(String(r.overall.reason || '')) };
+  out.dims = (r.dims || []).map((d) => ({ ...d, comment: R2(String(d.comment || '')) }));
+  // dimMap 必须跟着重建 —— 否则下游（UI / 断言）仍指向替换前的旧对象
+  out.dimMap = Object.fromEntries(out.dims.map((d) => [d.id, d]));
+  out.issues = (r.issues || []).map((it) => ({
+    ...it,
+    title: R2(String(it.title || '')), detail: R2(String(it.detail || '')),
+    fix: R2(String(it.fix || '')), ask: R2(String(it.ask || '')),
+  }));
+  out.highlights = (r.highlights || []).map((h) => R2(String(h)));  out.green = {
+    ...(r.green || {}),
+    did: (((r.green || {}).did) || []).map((x) => R2(String(x))),
+    missed: (((r.green || {}).missed) || []).map((x) => R2(String(x))),
+  };
+  out.mustAsk = (r.mustAsk || []).map((q) => R2(String(q)));
+  out.report = renderReport(out);
+  out.gate = gateVisible(out);
+  out.gate.autoReplaced = (violations || []).length;
+  return out;
+}
+
+function stripFence(s) {
+  return String(s).trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+}
+
+function pickJsonObject(s) {
+  const a = s.indexOf('{');
+  const b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  return s.slice(a, b + 1);
+}
+
+function scoreOf(level) {
+  const m = DATA.rubric.meta.radar.score_map;
+  return Object.prototype.hasOwnProperty.call(m, level) ? m[level] : null;
+}
+
+/** 七维 → 雷达图轴数据。**只画评得出来的维度** —— 未评的直接不出现。 */
+function radarData(dims) {
+  const labels = DATA.rubric.meta.radar.labels;
+  return (Array.isArray(dims) ? dims : [])
+    .map((d) => ({
+      id: d.id,
+      label: labels[d.id] || d.name,
+      level: d.level,
+      score: scoreOf(d.level),
+    }))
+    .filter((x) => x.score !== null);
+}
+
+function escSvg(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** 画雷达图：内联 SVG，不依赖任何图表库（否则就不是单文件离线了） */
+function renderRadarSvg(dims, opts = {}) {
+  const size = opts.size || 440;
+  const cx = size / 2;
+  const cy = size / 2;
+  const R = size * 0.295;
+  const labelR = R + size * 0.08;
+  const rings = DATA.rubric.meta.radar.rings;
+  const data = radarData(dims);
+  const n = data.length;
+  if (!n) {
+    // 与主路径保持一致：内联 SVG 在 HTML 文档里不需要 xmlns 声明，
+    // 带上反而会被「无外部引用」检查当成 http 字符串（虽然它并不加载任何东西）。
+    return `<svg width="${size}" height="${size}" role="img" aria-label="雷达图：暂无可评维度">` +
+      `<rect width="${size}" height="${size}" fill="#fbfcfd"/>` +
+      `<text x="${cx}" y="${cy}" text-anchor="middle" font-size="14" fill="#8a97a6">暂无可以评价的维度</text></svg>`;
+  }
+  const ang = (i) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  const at = (i, r) => [cx + r * Math.cos(ang(i)), cy + r * Math.sin(ang(i))];
+  const f = (x) => x.toFixed(1);
+
+  const ringPolys = rings.map((pct) => {
+    const pts = data.map((_, i) => at(i, (R * pct) / 100)).map(([x, y]) => `${f(x)},${f(y)}`).join(' ');
+    return `<polygon points="${pts}" fill="none" stroke="${pct === 100 ? '#cbd3dc' : '#e6eaee'}" stroke-width="1"/>`;
+  }).join('');
+
+  const spokes = data.map((_, i) => {
+    const [x, y] = at(i, R);
+    return `<line x1="${f(cx)}" y1="${f(cy)}" x2="${f(x)}" y2="${f(y)}" stroke="#e6eaee" stroke-width="1"/>`;
+  }).join('');
+
+  const shape = data.map((d, i) => at(i, (R * d.score) / 100)).map(([x, y]) => `${f(x)},${f(y)}`).join(' ');
+  const dots = data.map((d, i) => {
+    const [x, y] = at(i, (R * d.score) / 100);
+    return `<circle cx="${f(x)}" cy="${f(y)}" r="3.5" fill="#2f6f4e"/>`;
+  }).join('');
+
+  const labels = data.map((d, i) => {
+    const a = ang(i);
+    const [lx, ly] = at(i, labelR);
+    const cos = Math.cos(a), sin = Math.sin(a);
+    const anchor = Math.abs(cos) < 0.25 ? 'middle' : (cos > 0 ? 'start' : 'end');
+    const dy = sin > 0.6 ? 11 : (sin < -0.6 ? -2 : 4);
+    return `<text x="${f(lx)}" y="${f(ly + dy)}" text-anchor="${anchor}" font-size="13" fill="#4a5560">${escSvg(d.label)}</text>` +
+      `<text x="${f(lx)}" y="${f(ly + dy + 15)}" text-anchor="${anchor}" font-size="11.5" fill="#7b8794">${d.score}</text>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${size} ${size}" width="100%" role="img" aria-label="七维评分雷达图" class="radar-svg">` +
+    ringPolys + spokes +
+    `<polygon points="${shape}" fill="rgba(47,111,78,.18)" stroke="#2f6f4e" stroke-width="2" stroke-linejoin="round"/>` +
+    dots + labels + '</svg>';
+}
+
+const EXTRACT_FIELDS = [
+  'ph', 'studentDiagnosis', 'planText', 'crop',
+  'scale', 'texture', 'measurementMethod', 'samples',
+];
+
+/* 场地规模与 pH 测法已改成自由填写（表单是文本框），识别时照抄学生原文即可。
+   texture 仍是下拉框（沙土/壤土/黏土），所以它的枚举必须留着。 */
+const FIELD_ENUMS = {
+  texture: ['沙土', '壤土', '黏土'],
+};
+
+const CONFIDENCE_LEVELS = ['high', 'medium', 'low', 'none'];
+
+const FIELD_LABELS = {
+  ph: '土壤 pH 值',
+  studentDiagnosis: '学生自己的判断',
+  planText: '改良方案原文',
+  crop: '打算种什么',
+  scale: '场地规模',
+  texture: '土壤质地',
+  measurementMethod: 'pH 是怎么测的',
+  samples: '采样点数',
+};
+
+function buildImageExtractPrompt(imageCount = 1) {
+  const system = [
+    '你是一个表单录入助手。学生会拍照上传手写的土壤探究记录，你要把里面的信息读出来，填成结构化数据。',
+    '',
+    '【最重要的一条】你只负责"读"，不负责"判断"，也不负责"补全"。',
+    '· 照片里没写的，就填 null。绝对不要根据常识猜测、补齐或改写。',
+    '· 看不清、有涂改、有歧义的，把 confidence 标成 low，并在 notes 里说明。',
+    '· 数值要特别小心：小数点有没有、数字 1/7、4/9、6/8 都容易认错。拿不准就标 low，别自作主张。',
+    '· planText 要**照抄**，不要润色、不要改错别字、不要总结、不要补充。',
+    '',
+    '【要提取的字段】',
+    'ph                  土壤 pH 值（只填数字，如 "5.2"）',
+    'studentDiagnosis    学生自己写的判断（如"酸性土"）',
+    'planText            改良方案原文（照抄）',
+    'crop                打算种什么植物',
+    'scale               场地规模（照抄学生写的，如"花盆""学校实验田""自家阳台"）',
+    'texture             土壤质地，只能填：沙土 / 壤土 / 黏土',
+    'measurementMethod   pH 怎么测的（照抄学生写的，如"用pH计测浸出液""试纸测的"）',
+    'samples             采样点数（只填整数）',
+    '',
+    '【输出】严格返回 JSON，不要加解释文字、不要加代码围栏：',
+    '{',
+    '  "fields": {',
+    '    "ph": { "value": "5.2", "confidence": "high" },',
+    '    "studentDiagnosis": { "value": "酸性土", "confidence": "medium" },',
+    '    "planText": { "value": "……", "confidence": "high" },',
+    '    "crop": { "value": "大豆", "confidence": "low" },',
+    '    "scale": { "value": null, "confidence": "none" },',
+    '    "texture": { "value": null, "confidence": "none" },',
+    '    "measurementMethod": { "value": "pH试纸测土壤浸出液", "confidence": "medium" },',
+    '    "samples": { "value": 3, "confidence": "high" }',
+    '  },',
+    '  "notes": "需要提醒人核对的地方；没有就填空字符串"',
+    '}',
+    'confidence 只能取：high（清楚无歧义）/ medium（能认出但有不确定）/ low（拿不准，务必人工核对）/ none（照片里没有这个信息）。',
+    '八个字段一个都不能少。',
+  ].join('\n');
+
+  const userText = `这是学生手写记录的 ${imageCount} 张照片。请按上面的格式提取字段，只返回 JSON。`;
+  return { system, userText };
+}
+
+function normalizeExtractedField(key, value) {
+  if (value === null || value === undefined || value === '') return { value: null, problem: null };
+  if (key === 'ph') {
+    const n = parseFloat(String(value).replace(/[^\d.]/g, ''));
+    if (Number.isNaN(n) || n < 0 || n > 14) return { value: null, problem: '不是 0–14 之间的数' };
+    return { value: n, problem: null };
+  }
+  if (key === 'samples') {
+    const n = parseInt(String(value).replace(/[^\d]/g, ''), 10);
+    if (Number.isNaN(n) || n < 1 || n > 99) return { value: null, problem: '不是 1–99 之间的整数' };
+    return { value: n, problem: null };
+  }
+  const s = String(value).trim();
+  if (!s) return { value: null, problem: null };
+  if (FIELD_ENUMS[key]) {
+    const hit = FIELD_ENUMS[key].find((v) => s.includes(v) || v.includes(s));
+    if (!hit) return { value: null, problem: `不在允许取值内：${s}` };
+    return { value: hit, problem: null };
+  }
+  return { value: s, problem: null };
+}
+
+function parseImageExtraction(rawText) {
+  const raw = stripFence(rawText);
+  const json = pickJsonObject(raw);
+  if (!json) return { ok: false, reason: 'no_json', fields: {}, notes: '', raw };
+  let obj;
+  try { obj = JSON.parse(json); } catch { return { ok: false, reason: 'bad_json', fields: {}, notes: '', raw }; }
+  if (!obj || typeof obj !== 'object') return { ok: false, reason: 'not_object', fields: {}, notes: '', raw };
+
+  const src = (obj.fields && typeof obj.fields === 'object') ? obj.fields : {};
+  const fields = {};
+  for (const key of EXTRACT_FIELDS) {
+    const cell = src[key];
+    const hasCell = cell && typeof cell === 'object';
+    const confRaw = hasCell ? cell.confidence : null;
+    const conf = CONFIDENCE_LEVELS.includes(confRaw) ? confRaw : 'none';
+    const norm = normalizeExtractedField(key, hasCell ? cell.value : null);
+    fields[key] = {
+      value: norm.value,
+      confidence: norm.value === null ? 'none' : conf,
+      problem: norm.problem,
+      asRead: hasCell ? cell.value : null,
+    };
+  }
+  return {
+    ok: true,
+    reason: 'ok',
+    fields,
+    notes: typeof obj.notes === 'string' ? obj.notes.trim() : '',
+    raw,
+  };
+}
+
+/** 识别结果统计，供待核对区显示 */
+function extractionSummary(ext) {
+  const counts = { high: 0, medium: 0, low: 0, none: 0 };
+  const needCheck = [];
+  const fields = (ext && ext.fields) || {};
+  for (const key of EXTRACT_FIELDS) {
+    const c = fields[key] || { value: null, confidence: 'none' };
+    counts[c.confidence] = (counts[c.confidence] || 0) + 1;
+    const empty = c.value === null || c.value === undefined;
+    if (empty || c.confidence !== 'high') needCheck.push(key);
+  }
+  return { counts, needCheck: [...new Set(needCheck)], total: EXTRACT_FIELDS.length };
+}
+
+/** 把识别结果并入表单：全填，但把与已有内容冲突的报出来 */
+function mergeExtraction(current, ext) {
+  const applied = {};
+  const conflicts = [];
+  const empty = [];
+  for (const key of EXTRACT_FIELDS) {
+    const cell = ext.fields[key];
+    if (!cell || cell.value === null) { empty.push(key); continue; }
+    const cur = current ? current[key] : undefined;
+    const hasCur = cur !== undefined && cur !== null && cur !== ''
+      && !(typeof cur === 'number' && Number.isNaN(cur));
+    if (hasCur && String(cur) !== String(cell.value)) {
+      conflicts.push({ key, label: FIELD_LABELS[key], current: cur, incoming: cell.value });
+    }
+    applied[key] = cell.value;
+  }
+  return { applied, conflicts, empty };
+}
+
+/* ============================================================
+ * 8. 总入口：评价
+ * ============================================================ */
+
+const PH_MIN = 0;
+const PH_MAX = 14;
+
+/**
+ * 输入合法性检查 —— 判定前的第一道闸。
+ *
+ * 非法输入一律「拒绝出报告」，绝不用默认值凑一个分数出来：
+ * 原先 pH 填 -1 或 1e999 能过 isNaN 守卫，直接拿「总评：优秀」+ 亮点
+ * 「对 pH -1 的解读是准确的（未知）」；什么都不填直接提交会拿「合格」，
+ * 而 safety 维度因为空集反而给了「优秀」。
+ */
+function validateInput(input) {
+  const src = input || {};
+  const problems = [];
+  const ph = src.ph;
+  const planText = String(src.planText || '');
+
+  if (ph === undefined || ph === null || (typeof ph === 'number' && Number.isNaN(ph))) {
+    problems.push({ code: 'ph_missing', text: '土壤 pH 值没有填。' });
+  } else if (typeof ph !== 'number' || !Number.isFinite(ph)) {
+    problems.push({ code: 'ph_not_number', text: '土壤 pH 必须是一个数字。' });
+  } else if (ph < PH_MIN || ph > PH_MAX) {
+    problems.push({ code: 'ph_out_of_range', text: `土壤 pH 应在 ${PH_MIN}–${PH_MAX} 之间，现在填的是 ${ph}。` });
+  }
+
+  if (!planText.trim()) problems.push({ code: 'plan_empty', text: '学生的改良方案还没有写。' });
+
+  return { ok: problems.length === 0, problems };
+}
+
+/** 取第一句，用于亮点兜底时引用学生原话（量规要求亮点必须具体，不许写空话） */
+function firstSentence(text) {
+  const s = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const head = s.split(/[。！？；\n]/)[0] || s;
+  return head.length > 32 ? head.slice(0, 32) + '…' : head;
+}
+
+/**
+ * 结构骨架：输入校验 + 措施层面的空白兜底 + 结构性追问清单。
+ * 七个维度的等级、总评、问题清单**全部由 AI 给**（见 applyScoring）。
+ * 这里不产出任何等级——判不出「学生用了什么、对不对」时，宁可空着。
+ * @param {object} input 学生输入
+ */
+function evaluate(input) {
+  const src = input || {};
+  const check = validateInput(src);
+  if (!check.ok) {
+    return {
+      ok: false, stage: 'validate', problems: check.problems,
+      reason: check.problems.map((p) => p.text).join(' '),
+      input: src,
+      overall: null, dims: [], dimMap: {}, issues: [], highlights: [],
+      mustAsk: [], evidence: null, matched: null, topics: null, report: '', gate: null,
+    };
+  }
+
+  const matched = {
+    measures: [],
+    overuseDetected: hasOveruseClaim(String(src.planText || '')),
+    noJudgment: true,
+  };
+  const topics = detectTopics(src.planText || '');
+  const evidence = checkEvidence(src);
+
+  // 没有 AI 就没有打分：七个维度**全部「未评」**，内核不替模型拿主意。
+  const dims = DATA.rubric.dimensions
+    .map((def) => mkDim(def.id, '未评', '这一项由 AI 打分；未接入 AI 时不评。'));
+
+  const dimMap = Object.fromEntries(dims.map((d) => [d.id, d]));
+  const issues = collectIssues(src, matched, topics, dimMap);
+  // 没有 AI 判定 → 不给总评。任何等级都是编的。
+  const overall = {
+    grade: '未评分', capped: false, l1Count: 0, noJudgment: true,
+    reason: '措施层面的评价需要接入 AI。判不出「学生用了什么、对不对」时，这一栏不出等级——'
+      + '宁可空着，也不拿一个没依据的分数糊过去。',
+  };
+
+  // 亮点：从维度里挑正向证据，必须具体
+  const highlights = [];
+  const diagDim = dimMap.diagnosis;
+  if (diagDim && diagDim.level !== '待改进' && Number.isFinite(src.ph)) {
+    highlights.push(`对 pH ${src.ph} 的解读是准确的（${classifyPh(src.ph)}），方向判断没问题。`);
+  }
+  for (const m of matched.measures) {
+    if (m.verdict === 'correct') highlights.push(`选择「${m.name}」是妥当的：${String(m.say || '').split('。')[0]}。`);
+  }
+  if (topics.prevention) highlights.push('想到了「从源头减少问题」这一层，这是绿色化学里很重要、也最容易被忽略的思路。');
+  if (topics.protection) highlights.push('方案里写了防护措施，安全意识到位。');
+  if (topics.retest) highlights.push('设计了改良后的复测，说明你知道要用数据来判断效果。');
+  if (topics.control) highlights.push('设置了对照，有对比实验的意识。');
+  const plant = findPlant(src.meta && src.meta.crop);
+  if (plant) highlights.push(`选了${plant.name}，并且它的适宜 pH 是 ${plant.range[0]}–${plant.range[1]}，这一点考虑到了。`);
+
+  // 量规写明「必须至少一条具体亮点」，所以不能是空数组。
+  // 兜底时直接引用学生方案里的原句，避免"思路清晰"这类空话。
+  if (!highlights.length) {
+    const first = firstSentence(src.planText);
+    highlights.push(first
+      ? `你把要做的事写出来了——「${first}」；这一步是方案能落地的起点。`
+      : '你愿意把这份方案拿出来对照检查，这一步本身就是探究的开始。');
+  }
+
+  const result = {
+    ok: true,
+    input: src,
+    matched, topics, evidence,
+    dims, dimMap,
+    green: { did: [], missed: [], level: '未评', dim: dimMap.green },
+    ecology: { plant: null, dim: dimMap.ecology },
+    issues,
+    overall,
+    highlights: highlights.slice(0, 4),
+    // 原先截断成 4 条，恰好把「土壤质地」那条最该问的挤掉了；追问不该被静默截断
+    mustAsk: evidence.mustAsk,
+  };
+
+  // 术语闸门接进输出链路：渲染一次报告并自检，结果随评价一起返回
+  result.report = renderReport(result);
+  result.gate = gateAndRepair(result.report);
+
+  return result;
+}
+
+/* ============================================================
+ * 8.5 打分管道（AI 全自主）
+ * ------------------------------------------------------------
+ * 判定与打分全部交给 AI：七个维度的等级、总评、问题清单，都由模型给。
+ * 内核不再算等级、不再有条款 id、不再钳制。它只做四件事：
+ *   ① 校验模型给的取值合法（等级必须在四档内、维度必须齐全）——格式问题才丢
+ *   ② 标注每条问题的引文有没有在学生原文里逐字找到（对不上**不丢问题**，
+ *      只是渲染时不把它当学生的原话展示）
+ *   ③ 过术语闸门
+ *   ④ 渲染
+ * 数据（amendment-constraints.json）从「判定依据」降级为**参考方案**：只进提示词。
+ * ============================================================ */
+
+const RUBRIC_LEVELS = ['优秀', '良好', '合格', '待改进'];
+
+/** AI 打分输出的契约（写进提示词，也用于解析校验） */
+const SCORING_CONTRACT = `严格返回一个 JSON 对象，不要加任何解释文字、不要加代码围栏：
+{
+  "dims": {
+    "diagnosis":    { "level": "优秀|良好|合格|待改进", "comment": "…" },
+    "chemistry":    { "level": "…", "comment": "…" },
+    "green":        { "level": "…", "comment": "…" },
+    "feasibility":  { "level": "…", "comment": "…" },
+    "ecology":      { "level": "…", "comment": "…" },
+    "completeness": { "level": "…", "comment": "…" },
+    "safety":       { "level": "…", "comment": "…" }
+  },
+  "overall": { "grade": "优秀|良好|合格|待改进", "reason": "为什么是这个总评，一两句" },
+  "issues": [
+    { "level": "L1|L2|L3", "title": "…", "detail": "…", "fix": "…", "ask": "…",
+      "evidence": "学生原文里逐字复制的一段话" }
+  ],
+  "highlights": ["…"],
+  "green": { "did": ["…"], "missed": ["…"] },
+  "asks": ["…"]
+}
+说明：
+- **七个维度必须齐全**，每个都要给 level 和 comment。comment 是一段话说给这个学生听，不要复述表格。
+- **overall 由你定**。请守住两条：① 只要存在原理性错误、危险做法或根本无效的措施，总评不高于「待改进」；
+  ② 缺关键信息不足以判断时，不要给「优秀」。
+- **issues 按严重程度从高到低排，最多 4 条**。每条**必须**带 evidence：从学生原文里逐字复制一段话。
+  程序会拿它回原文核对：**对不上的不会被删除**，但也不会当成你的原话展示给学生。
+  所以请尽量逐字复制；没有原文依据的问题不要写。
+- L1 = 原理错误 / 危险做法 / 根本无效；L2 = 方向对但漏了关键约束；L3 = 表述不严谨。
+- highlights 必须至少一条，且**具体到方案里的某句话**；不许写「思路清晰」这类空话。
+- green.did / green.missed 各 1–3 条短句。
+- asks 写你要追问学生的问题，每条都要落在「为什么」上。
+- **交卷前请自己判断一遍措辞**：每条评语与问题、亮点、追问——凡是初三化学课本里
+  没出现过的术语，一律换成日常说法再交。程序只做复查，不替你判断什么算超纲。`;
+
+/** 参考方案（原约束表）→ 提示词里的参考段落。它只是参考，不是硬性规则。 */
+/**
+ * 打分调用的提示词。
+ * system = 全静态（评分细则 + 参考方案 + 闸门 + 语气 + 契约）→ 利于命中上下文缓存。
+ * user   = 本次学生数据 + 内核的结构性追问。
+ */
+function buildScoringPrompt(input, r) {
+  const meta = (input && input.meta) || {};
+
+  const dimLines = DATA.rubric.dimensions.map((d) =>
+    `  ${d.order}. ${d.name}（${d.id}）—— ${d.core_question}\n` +
+    `     优秀：${d.levels['优秀']}\n     良好：${d.levels['良好']}\n` +
+    `     合格：${d.levels['合格']}\n     待改进：${d.levels['待改进']}`).join('\n');
+
+  const gateLines = DATA.termGate.gate.map((g) => {
+    const aka = (g.also_blocked && g.also_blocked.length) ? `（也叫 ${g.also_blocked.join(' / ')}）` : '';
+    return `  · ${g.blocked}${aka} → 说成「${g.alternatives[0]}」`;
+  }).join('\n');
+
+  const toneLines = DATA.severity.tone_rules.map((t) => `  · ${t}`).join('\n');
+  const levelLines = DATA.severity.levels
+    .map((l) => `  ${l.id} ${l.name}：${l.meaning}`).join('\n');
+
+  const system = [
+    '你是一位土壤改良专家，正在给初三学生的探究作业打分并写评语。全程用初三学生能读懂的话。',
+    '',
+    '【你的职责】',
+    '判定与打分**全部由你做**：七个维度的等级、总评、问题清单，都由你决定。',
+    '下面给你的「评分细则」是尺度，「参考方案」是经验参考——**参考方案不是硬性规则**，',
+    '如果学生的做法不在里面，你照样可以判；判的时候只看你的专业判断，不要因为"表里没有"就放过或硬套。',
+    '',
+    '【铁律零：不许做功效断言】',
+    '不许说「某某材料是用来改良酸性/碱性土壤的」这类话。这类说法会让学生误以为「只要方向对，这个材料就能用」。',
+    '要讲材料**本身合不合适**：危险或无效的做法，无论土壤是酸是碱都不该用。',
+    '',
+    '【评分细则：七个维度 × 四档】',
+    dimLines,
+    '',
+    '【总评怎么定】',
+    '  · 只要存在**原理性错误、危险做法或根本无效的措施**，总评不高于「待改进」。',
+    '  · 缺关键信息、不足以判断时，不要给「优秀」——把缺什么写进 asks。',
+    '  · 其余情况按七维的整体表现定档。',
+    '',
+    '【严重度分级】',
+    levelLines,
+    LevelNote(),
+    '',
+    '【铁律一：术语闸门】一下这些词一律不许出现，必须换说法：',
+    gateLines,
+    '如果某个词非用不可，后面必须紧跟「初中不用记这个词，你只要知道……」，且全篇最多 2 处。',
+    '',
+    '【铁律二：语气】',
+    toneLines,
+    '',
+    '【参考方案（经验参考，不是规则）】',
+    buildScoringReference(DATA.constraints),
+    '',
+    '【输出契约】',
+    SCORING_CONTRACT,
+  ].join('\n');
+
+  const user = [
+    '【学生提交】',
+    `土壤 pH：${Number.isFinite(input.ph) ? input.ph : '（未填）'}（${classifyPh(input.ph)}）`,
+    `学生自己的判断：${String(input.studentDiagnosis || '').trim() || '（空）'}`,
+    `改良方案原文：${String(input.planText || '').trim() || '（空）'}`,
+    '',
+    '【背景信息】（显示「（未填）」的才是真的没提供；已提供的不要再说成「没交代」）',
+    `作物：${meta.crop || '（未填）'}　场地：${meta.scale || '（未填）'}　质地：${meta.texture || '（未填）'}`,
+    `测法：${meta.measurementMethod || '（未填）'}　采样点数：${meta.samples || '（未填）'}`,
+    '',
+    (r && r.mustAsk && r.mustAsk.length)
+      ? '【结构性追问（程序按"缺什么问什么"生成，你可以用它，也可以换成你自己的说法）】\n' +
+        r.mustAsk.map((q) => `  · ${q}`).join('\n')
+      : '【结构性追问】信息看起来比较齐，暂时没有必问项。',
+    '',
+    '现在按输出契约返回 JSON。七个维度等级、总评、问题清单都由你定。',
+  ].join('\n');
+
+  return { system, user };
+}
+
+function LevelNote() {
+  return '  · 明确指出错误时，要同时给出正确方向，并追问「你觉得为什么要这样做」，把思考权还给学生。\n' +
+    '  · L2 用补充的语气，不是否定。L3 一句话提醒即可。\n' +
+    '  · 每条问题都必须回引学生原文（evidence），没有原文依据的问题不要写。';
+}
+
+/** 参考方案（原约束表）→ 提示词里的参考段落。它只是参考，不是硬性规则。 */
+function buildScoringReference(constraints) {
+  return (constraints.measures || []).map((m) => {
+    const aka = (m.aliases && m.aliases.length) ? `（也叫 ${m.aliases.join(' / ')}）` : '';
+    const caut = (m.cautions && m.cautions.length) ? `\n      常见禁忌：${m.cautions.join('；')}` : '';
+    const tag = {
+      forbidden: '通常认为不能用', ineffective: '通常认为无效', limited: '作用有限',
+      caution: '可以用但有关键禁忌', ok: '常规可用的做法',
+    }[m.rule_level] || '';
+    return `  · ${m.name}${aka}　[经验判断：${tag}]\n      可以说成：${m.say}${caut}`;
+  }).join('\n');
+}
+
+/**
+ * 解析 AI 打分输出。
+ * **刻意不沿用旧契约的解析器**：旧契约里 dims 是「字符串评语」，新契约里是
+ * 「{level, comment} 对象」，套用旧解析会得到空 dims 并被误判为 no_dims。
+ */
+function parseScoringOutput(rawText) {
+  const raw = String(rawText == null ? '' : rawText);
+  if (!raw.trim()) return { ok: false, reason: '模型返回为空', raw };
+  let t = raw.trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  let obj = null;
+  try { obj = JSON.parse(t); } catch (e) { obj = null; }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    const a = t.indexOf('{');
+    const b = t.lastIndexOf('}');
+    if (a >= 0 && b > a) { try { obj = JSON.parse(t.slice(a, b + 1)); } catch (e) { obj = null; } }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return { ok: false, reason: '模型返回的不是一个 JSON 对象', raw };
+  }
+  // 把 dims 从「字符串评语」兼容成「{level, comment}」
+  const dims = {};
+  const rawDims = (obj && obj.dims) || {};
+  for (const def of DATA.rubric.dimensions) {
+    const v = rawDims[def.id];
+    if (v && typeof v === 'object') {
+      dims[def.id] = { level: String(v.level || v.grade || '').trim(), comment: String(v.comment || '').trim() };
+    } else if (typeof v === 'string') {
+      dims[def.id] = { level: '', comment: v.trim() };
+    }
+  }
+  const overall = (obj && obj.overall) || {};
+  return {
+    ok: true, raw,
+    data: {
+      dims,
+      overall: {
+        grade: String((overall.grade || overall.level || '')).trim(),
+        reason: String(overall.reason || '').trim(),
+      },
+      issues: Array.isArray(obj && obj.issues) ? obj.issues : (Array.isArray(obj && obj.findings) ? obj.findings : []),
+      highlights: Array.isArray(obj && obj.highlights) ? obj.highlights : [],
+      green: (obj && obj.green) || {},
+      asks: Array.isArray(obj && obj.asks) ? obj.asks : [],
+    },
+  };
+}
+
+/**
+ * 核验 AI 打分：取值合法性（格式）+ 引文标注。
+ * 取值不合规的那条会被丢掉（那是格式问题，留着会渲染出垃圾）；
+ * **引文对不上原文不再丢问题**——判定归 AI，内核不做这道拦截，
+ * 只标注 evidenceOk，渲染层据此决定要不要把它当学生原话展示。
+ */
+function verifyScoring(data, input) {
+  const src = input || {};
+  const text = normText(src.planText) + ' \n ' + normText(src.studentDiagnosis);
+  const rejected = [];
+  const unmatched = [];
+
+  const dims = {};
+  for (const def of DATA.rubric.dimensions) {
+    const d = data.dims[def.id] || {};
+    const okLevel = RUBRIC_LEVELS.includes(d.level);
+    if (!okLevel) rejected.push({ what: `维度 ${def.id} 的等级`, value: d.level, why: 'not_in_enum' });
+    dims[def.id] = { level: okLevel ? d.level : '未评', comment: d.comment || '' };
+  }
+
+  const gradeOk = RUBRIC_LEVELS.includes(data.overall.grade);
+  if (!gradeOk) rejected.push({ what: '总评', value: data.overall.grade, why: 'not_in_enum' });
+
+  const LEVELS = ['L1', 'L2', 'L3'];
+  const issues = [];
+  for (const it of data.issues) {
+    if (!it || typeof it !== 'object') { rejected.push({ what: '问题条目', why: 'malformed' }); continue; }
+    const lv = String(it.level || '').toUpperCase();
+    if (!LEVELS.includes(lv)) { rejected.push({ what: it.title, value: it.level, why: 'bad_level' }); continue; }
+    const evi = normText(it.evidence);
+    // 判定归 AI：引文对不上**不再丢弃这条问题**（内核不做这道拦截）。
+    // 内核只如实判断这段引文有没有在学生原文里逐字找到；没找到的，
+    // 渲染层不会把它当作学生的原话展示。
+    const evidenceOk = !!evi && text.includes(evi);
+    if (!evidenceOk) unmatched.push({ what: String(it.title || '').trim(), evidence: evi });
+    issues.push({ level: lv, title: String(it.title || '').trim(), detail: String(it.detail || '').trim(),
+      fix: String(it.fix || '').trim(), ask: String(it.ask || '').trim(),
+      evidence: evi, evidenceOk, source: 'model' });
+  }
+
+  return {
+    dims,
+    overall: {
+      grade: gradeOk ? data.overall.grade : '未评分',
+      capped: false,
+      reason: data.overall.reason || '',
+      byModel: true,
+    },
+    issues, rejected, unmatched,
+    highlights: (data.highlights || []).map((x) => String(x).trim()).filter(Boolean),
+    green: data.green || {},
+    asks: (data.asks || []).map((x) => String(x).trim()).filter(Boolean),
+  };
+}
+
+/** 把核验过的打分结果装进 result */
+function applyScoring(r, scored) {
+  const out = { ...r };
+  out.dims = DATA.rubric.dimensions.map((def) => {
+    const d = scored.dims[def.id];
+    return { ...mkDim(def.id, d.level, d.comment), byModel: true };
+  });
+  out.dimMap = Object.fromEntries(out.dims.map((d) => [d.id, d]));
+  out.overall = scored.overall;
+  out.issues = scored.issues;
+  out.highlights = scored.highlights.length ? scored.highlights : r.highlights;
+  out.green = {
+    ...r.green,
+    did: (scored.green && scored.green.did && scored.green.did.length) ? scored.green.did : [],
+    missed: (scored.green && scored.green.missed && scored.green.missed.length) ? scored.green.missed : [],
+  };
+  out.mustAsk = scored.asks.length ? scored.asks : r.mustAsk;
+  out.scoringRejected = scored.rejected;
+  out.scoringUnmatched = scored.unmatched || [];
+  out.report = renderReport(out);
+  // 术语闸门对准**全部学生可见字段**
+  out.gate = gateVisible(out);
+  return out;
+}
+
+function renderReport(r) {
+  const L = [];
+  L.push(`# 土壤改良方案 · 专家评价单`);
+  L.push('');
+  L.push(`**总评：${r.overall.grade}**${r.overall.capped ? '（存在原理性/安全性问题，已封顶）' : ''}`);
+  L.push('');
+  L.push(`> ${r.overall.reason}`);
+  L.push('');
+  L.push(`**你提交的：** pH ${r.input.ph}（${classifyPh(r.input.ph)}）｜${r.input.meta?.crop || '未填作物'}｜${r.input.meta?.scale || '未填场地'}`);
+  L.push('');
+  L.push('---');
+  L.push('');
+  L.push('## 一、七维评分');
+  L.push('');
+  L.push('| 维度 | 等级 | 分数 |');
+  L.push('| --- | --- | --- |');
+  for (const d of r.dims) {
+    const sc = scoreOf(d.level);
+    L.push(`| ${d.name} | ${d.level} | ${sc === null ? '—（未评）' : sc} |`);
+  }
+  L.push('');
+  L.push(`> ${DATA.rubric.meta.radar.note}`);
+  L.push('');
+  L.push('## 二、逐维度评价');
+  L.push('');
+  L.push('| 维度 | 等级 | 评语 |');
+  L.push('| --- | --- | --- |');
+  for (const d of r.dims) L.push(`| ${d.name} | ${d.level} | ${d.comment.replace(/\|/g, '／')} |`);
+  L.push('');
+  L.push('## 三、做得好的地方');
+  L.push('');
+  if (r.highlights.length) r.highlights.forEach((h, i) => L.push(`${i + 1}. ${h}`));
+  else L.push('（方案信息还比较少，暂时找不出可以具体肯定的地方——补上材料和用量后我再看。）');
+  L.push('');
+  L.push('## 四、主要问题（按严重程度排序）');
+  L.push('');
+  const top = r.issues.slice(0, 3);
+  if (!top.length) {
+    L.push('没有发现原理性错误。方案是站得住的，剩下的只是把细节补齐。');
+  } else {
+    top.forEach((it, i) => {
+      L.push(`### ${i + 1}. 【${it.level}】${it.title}`);
+      L.push('');
+      L.push(it.detail);
+      L.push('');
+      L.push(`**怎么改：** ${it.fix}`);
+      if (it.ask) { L.push(''); L.push(`**想一想：** ${it.ask}`); }
+      L.push('');
+    });
+  }
+  // L3 属于「一句话提醒即可」，若被挤出前三条，单独补一行，避免静默丢失
+  const spilledL3 = r.issues.slice(3).filter((it) => it.level === 'L3');
+  if (spilledL3.length) {
+    L.push(`> 顺带提醒（不影响总评）：${spilledL3.map((it) => `${it.title}——${it.fix}`).join('；')}`);
+    L.push('');
+  }
+  L.push('## 五、绿色化学专项');
+  L.push('');
+  L.push(`**等级：${r.green.level}**`);
+  L.push('');
+  if (r.green.did.length) {
+    L.push('已经做到的：');
+    r.green.did.forEach((d) => L.push(`- ${d}`));
+    L.push('');
+  }
+  if (r.green.missed.length) {
+    L.push('还可以补上的：');
+    r.green.missed.forEach((d) => L.push(`- ${d}`));
+    L.push('');
+  }
+  L.push(`> 课标依据：${DATA.rubric.dimensions.find((d) => d.id === 'green').anchor}`);
+  L.push('');
+  L.push('## 六、我还需要你回答');
+  L.push('');
+  if (r.mustAsk.length) r.mustAsk.forEach((q, i) => L.push(`${i + 1}. ${q}`));
+  else L.push('信息已经比较完整，暂时不需要补充。');
+  L.push('');
+  L.push('---');
+  L.push('');
+  L.push('*本评价由「土壤改良方案·专家评价智能体」生成，定位是第二意见与追问者，不替代教师评分。*');
+  return L.join('\n');
+}
+
+
+/* ============================================================
+ * LLM 客户端（浏览器端）
+ * ------------------------------------------------------------
+ * · Key 不进文件：存在 localStorage，存不住就退回内存（当次会话有效）
+ * · 流式：思维链走 reasoning_content，正文走 content
+ * · DeepSeek 思考模式下 temperature / presence_penalty / frequency_penalty 不生效，
+ *   所以一个都不发；稳定性由内核判定保证，不靠采样参数。
+ * · 两条通路共用同一次流式实现：
+ *     generate()           文本 → 评价单
+ *     extractFromImages()  图片 → 表单字段
+ * ============================================================ */
+
+var SoilLLM = (function () {
+  var LS_KEY = 'soil-eval-llm-config';
+  var DEFAULTS = {
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-flash',
+    apiKey: '',
+    effort: 'high',
+  };
+
+  var storageState = null;   // null=未探测 / true / false
+  var memory = null;         // localStorage 不可用时的兜底
+
+  function probeStorage() {
+    if (storageState !== null) return storageState;
+    try {
+      var k = '__soil_probe__';
+      window.localStorage.setItem(k, '1');
+      window.localStorage.removeItem(k);
+      storageState = true;
+    } catch (e) {
+      storageState = false;
+    }
+    return storageState;
+  }
+
+  function load() {
+    if (probeStorage()) {
+      try {
+        var raw = window.localStorage.getItem(LS_KEY);
+        if (raw) return Object.assign({}, DEFAULTS, JSON.parse(raw));
+      } catch (e) { /* 数据坏了就当没有 */ }
+    }
+    return Object.assign({}, DEFAULTS, memory || {});
+  }
+
+  function save(cfg) {
+    var clean = {
+      baseUrl: (cfg.baseUrl || DEFAULTS.baseUrl).trim().replace(/\/+$/, ''),
+      model: (cfg.model || DEFAULTS.model).trim(),
+      apiKey: (cfg.apiKey || '').trim(),
+      effort: cfg.effort || DEFAULTS.effort,
+    };
+    memory = clean;
+    if (probeStorage()) {
+      try { window.localStorage.setItem(LS_KEY, JSON.stringify(clean)); }
+      catch (e) { storageState = false; }
+    }
+    return clean;
+  }
+
+  function clear() {
+    memory = null;
+    if (probeStorage()) {
+      try { window.localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function storageNote() {
+    return probeStorage()
+      ? 'API Key 只保存在你自己这台电脑的浏览器里，不会写进这个 HTML 文件。'
+      : '⚠️ 这个浏览器不允许本地网页使用本地存储（file:// 的常见限制），Key 只保留在本次会话中——刷新后需要重填。';
+  }
+
+  function endpoint(baseUrl) {
+    var b = (baseUrl || DEFAULTS.baseUrl).trim().replace(/\/+$/, '');
+    return /\/chat\/completions$/.test(b) ? b : b + '/chat/completions';
+  }
+
+  /* ---------- 共用：一次流式调用 ---------- */
+  async function callStream(body, hooks) {
+    hooks = hooks || {};
+    var res;
+    try {
+      res = await fetch(endpoint(load().baseUrl), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + load().apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: hooks.signal,
+      });
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw e;
+      throw new Error('连不上服务（可能是网络、baseURL 写错，或浏览器拦截了跨域请求）：' +
+        (e && e.message ? e.message : e));
+    }
+
+    if (!res.ok) {
+      var detail = '';
+      try { detail = (await res.text()).slice(0, 400); } catch (e) { /* ignore */ }
+      var hint = '';
+      if (res.status === 401) hint = '（API Key 不对或已失效）';
+      else if (res.status === 402 || res.status === 403) hint = '（额度不足或无权限）';
+      else if (res.status === 413) hint = '（图片太大，请减少张数或降低分辨率）';
+      else if (res.status === 429) hint = '（请求太频繁）';
+      throw new Error('服务返回 ' + res.status + ' ' + hint + '\n' + detail);
+    }
+
+    if (!res.body || !res.body.getReader) {
+      var txt = await res.text();
+      return parseWhole(txt);
+    }
+
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder('utf-8');
+    var buffer = '';
+    var content = '';
+    var reasoning = '';
+    var usage = null;
+
+    for (;;) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+
+      var parts = buffer.split('\n');
+      buffer = parts.pop();
+
+      for (var i = 0; i < parts.length; i++) {
+        var line = parts[i].trim();
+        if (!line || line.charAt(0) === ':') continue;
+        if (line.indexOf('data:') !== 0) continue;
+        var payload = line.slice(5).trim();
+        if (payload === '[DONE]') continue;
+
+        var obj;
+        try { obj = JSON.parse(payload); } catch (e) { continue; }
+        if (obj.usage) usage = obj.usage;
+        var delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
+        if (!delta) continue;
+
+        if (delta.reasoning_content) {
+          reasoning += delta.reasoning_content;
+          if (hooks.onThinking) hooks.onThinking(reasoning);
+        }
+        if (delta.content) {
+          content += delta.content;
+          if (hooks.onDelta) hooks.onDelta(content);
+        }
+      }
+    }
+    return { text: content, reasoning: reasoning, usage: usage };
+  }
+
+  function parseWhole(txt) {
+    var content = '', reasoning = '', usage = null;
+    txt.split('\n').forEach(function (line) {
+      var t = line.trim();
+      if (t.indexOf('data:') !== 0) return;
+      var p = t.slice(5).trim();
+      if (p === '[DONE]') return;
+      try {
+        var o = JSON.parse(p);
+        if (o.usage) usage = o.usage;
+        var d = o.choices && o.choices[0] && o.choices[0].delta;
+        if (d) { content += d.content || ''; reasoning += d.reasoning_content || ''; }
+      } catch (e) { /* ignore */ }
+    });
+    return { text: content, reasoning: reasoning, usage: usage };
+  }
+
+  function baseBody(messages) {
+    var cfg = load();
+    return {
+      model: cfg.model,
+      messages: messages,
+      stream: true,
+      reasoning_effort: cfg.effort,
+      thinking: { type: 'enabled' },
+      stream_options: { include_usage: true },
+    };
+  }
+
+  /** 文本通路：组装好的提示词 → 评价单 JSON */
+  async function generate(o) {
+    if (!load().apiKey) throw new Error('还没填 API Key');
+    return callStream(baseBody([
+      { role: 'system', content: o.system },
+      { role: 'user', content: o.user },
+    ]), o);
+  }
+
+  /**
+   * 图片通路：手写照片 → 表单字段 JSON
+   * 注意：图片只能出现在 user 消息里（放 system 会返回 400）。
+   * @param {object} o {system, userText, images:[dataURL], detail, onThinking, onDelta, signal}
+   */
+  async function extractFromImages(o) {
+    if (!load().apiKey) throw new Error('还没填 API Key');
+    if (!o.images || !o.images.length) throw new Error('没有可识别的图片');
+
+    var content = [{ type: 'text', text: o.userText }];
+    for (var i = 0; i < o.images.length; i++) {
+      content.push({
+        type: 'image_url',
+        image_url: { url: o.images[i], detail: o.detail || 'original' },
+      });
+    }
+
+    return callStream(baseBody([
+      { role: 'system', content: o.system },
+      { role: 'user', content: content },
+    ]), o);
+  }
+
+  return {
+    load: load, save: save, clear: clear,
+    generate: generate, extractFromImages: extractFromImages,
+    storageNote: storageNote,
+    endpointOf: function () { return endpoint(load().baseUrl); },
+    hasKey: function () { return !!load().apiKey; },
+    defaults: DEFAULTS,
+  };
+})();
+
+
+/* ============================================================
+ * 界面逻辑
+ * 可直接调用上方内联内核的函数：evaluate / applyScoring /
+ * verifyScoring / parseScoringOutput / renderReport / renderRadarSvg /
+ * gateVisible / autoReplaceVisible / buildRepairPrompt / gateAndRepair /
+ * buildImageExtractPrompt / parseImageExtraction / extractionSummary /
+ * mergeExtraction ...
+ * ============================================================ */
+
+var $ = function (id) { return document.getElementById(id); };
+var GREEN_ANCHOR = DATA.rubric.dimensions.filter(function (d) { return d.id === 'green'; })[0].anchor;
+var RADAR_NOTE = DATA.rubric.meta.radar.note;
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* 当前状态 */
+var CURRENT = { result: null, report: '', mode: '', at: '' };
+
+/* ============================================================
+ * 视图切换（录入 ↔ 报告）
+ * ============================================================ */
+
+const VIEWS = ['input', 'report'];
+
+function setView(v) {
+  if (VIEWS.indexOf(v) < 0) v = 'input';
+  VIEWS.forEach(function (name) {
+    var el = $('view-' + name);
+    if (el) el.classList.toggle('is-active', v === name);
+  });
+  document.querySelectorAll('#view-toggle .vt-seg').forEach(function (b) {
+    b.classList.toggle('is-active', b.dataset.view === v);
+  });
+  // 切屏时回到顶部。系统开了「减弱动态效果」就不要再平滑滚动 ——
+  // CSS 里的 prefers-reduced-motion 管不到 JS 传进去的 behavior。
+  try {
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  } catch (e) { /* ignore */ }
+}
+
+/** 两档：录入 / 评价报告。没生成之前报告档禁用。 */
+function updateViewToggle() {
+  var ready = !!CURRENT.result;
+  document.querySelectorAll('#view-toggle .vt-seg').forEach(function (b) {
+    if (b.dataset.view === 'input') { b.disabled = false; return; }
+    b.disabled = !ready;
+    b.title = ready ? '' : '还没有生成评价';
+  });
+}
+
+document.querySelectorAll('#view-toggle .vt-seg').forEach(function (b) {
+  b.addEventListener('click', function () { if (!b.disabled) setView(b.dataset.view); });
+});
+$('report-back').addEventListener('click', function () { setView('input'); });
+
+/* 录入视图现在只有一个面板，标签页导航已移除 */
+
+/* ============================================================
+ * 表单读写
+ * ============================================================ */
+
+var EVAL_IDS = {
+  ph: 'e-ph', studentDiagnosis: 'e-diag', planText: 'e-plan', crop: 'e-crop',
+  scale: 'e-scale', texture: 'e-texture', measurementMethod: 'e-method', samples: 'e-samples',
+};
+
+function readForm(p) {
+  var meta = {};
+  var crop = $(p + '-crop').value.trim();
+  var scale = $(p + '-scale').value;
+  var texture = $(p + '-texture').value;
+  var method = $(p + '-method').value;
+  var samples = parseInt($(p + '-samples').value, 10);
+  if (crop) meta.crop = crop;
+  if (scale) meta.scale = scale;
+  if (texture) meta.texture = texture;
+  if (method) meta.measurementMethod = method;
+  if (samples > 0) meta.samples = samples;
+  var phRaw = $(p + '-ph').value.trim();
+  return {
+    ph: phRaw === '' ? NaN : parseFloat(phRaw),
+    planText: $(p + '-plan').value,
+    meta: meta,
+  };
+}
+
+function evalMsg(html) {
+  var el = $('e-msg');
+  el.className = 'out no-print';
+  el.innerHTML = html || '';
+}
+
+/* ============================================================
+ * 从照片识别
+ * ============================================================ */
+
+var IMG = { files: [], urls: [], snapshot: null, ext: null };
+
+function imgStatus(html) {
+  var el = $('img-status');
+  el.className = 'ai-status';
+  el.innerHTML = html || '';
+}
+
+function renderThumbs() {
+  $('img-thumbs').innerHTML = IMG.files.map(function (f, i) {
+    return '<div class="thumb"><img src="' + IMG.urls[i] + '" alt="照片' + (i + 1) +
+      '" data-idx="' + i + '"><span class="thumb-no">' + (i + 1) + '</span>' +
+      '<button type="button" class="thumb-del" data-del="' + i + '" title="移除">×</button></div>';
+  }).join('');
+}
+
+/** 压缩 + 裁掉顶部，返回 JPEG data URL。手写要留住笔画，长边给到 2400。 */
+function compressForUpload(file, cropTopPct) {
+  return new Promise(function (resolve, reject) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      try {
+        var sw = img.naturalWidth, sh = img.naturalHeight;
+        var cut = Math.round(sh * (cropTopPct || 0) / 100);
+        var keep = sh - cut;
+        if (keep <= 0 || !sw) return reject(new Error('裁掉的比例太大了'));
+        var max = 2400;
+        var scale = Math.min(1, max / Math.max(sw, keep));
+        var dw = Math.max(1, Math.round(sw * scale));
+        var dh = Math.max(1, Math.round(keep * scale));
+        var c = document.createElement('canvas');
+        c.width = dw; c.height = dh;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, dw, dh);
+        ctx.drawImage(img, 0, cut, sw, keep, 0, 0, dw, dh);
+        resolve({ dataUrl: c.toDataURL('image/jpeg', 0.9), w: dw, h: dh });
+      } catch (e) { reject(e); }
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('这张图片读不出来')); };
+    img.src = url;
+  });
+}
+
+async function runImageExtract() {
+  if (!IMG.files.length) { imgStatus('<div class="gatebar bad">先选照片。</div>'); return; }
+  if (!SoilLLM.hasKey()) {
+    $('e-settings').open = true;
+    imgStatus('<div class="gatebar bad">还没填 API Key。展开下面的「AI 设置」填一次；照片识别必须走 AI。</div>');
+    return;
+  }
+
+  var cropPct = parseInt($('img-crop').value, 10) || 0;
+  var p = buildImageExtractPrompt(IMG.files.length);
+
+  $('img-run').disabled = true;
+  imgStatus('<div class="ai-status-inner running">正在压缩照片…</div>');
+
+  try {
+    var dataUrls = [];
+    for (var i = 0; i < IMG.files.length; i++) {
+      var c = await compressForUpload(IMG.files[i], cropPct);
+      dataUrls.push(c.dataUrl);
+    }
+
+    imgStatus('<div class="ai-status-inner running">正在识别手写内容…</div>');
+    var out = await SoilLLM.extractFromImages({
+      system: p.system,
+      userText: p.userText,
+      images: dataUrls,
+      onThinking: function (t) {
+        imgStatus('<div class="ai-status-inner running">正在读照片…（思考 ' + t.length + ' 字）</div>');
+      },
+      onDelta: function (t) {
+        imgStatus('<div class="ai-status-inner running">正在输出结果…（' + t.length + ' 字）</div>');
+      },
+    });
+
+    var ext = parseImageExtraction(out.text);
+    if (!ext.ok) {
+      imgStatus('<div class="gatebar bad">识别结果不是有效 JSON（' + esc(ext.reason) +
+        '），没有改动你的表单。可以重拍一张更清楚的试试。</div>');
+      return;
+    }
+
+    // 撤销快照（识别前的表单）
+    IMG.snapshot = {};
+    Object.keys(EVAL_IDS).forEach(function (k) {
+      var el = $(EVAL_IDS[k]);
+      if (el) IMG.snapshot[k] = el.value;
+    });
+
+    var current = {};
+    Object.keys(EVAL_IDS).forEach(function (k) {
+      var el = $(EVAL_IDS[k]);
+      if (el) current[k] = el.value;
+    });
+    var merged = mergeExtraction(current, ext);
+
+    // 自动填入
+    clearImageMarks();
+    Object.keys(merged.applied).forEach(function (k) {
+      var el = $(EVAL_IDS[k]);
+      if (!el) return;
+      el.value = String(merged.applied[k]);
+      markFromImage(k, ext.fields[k].confidence);
+    });
+
+    IMG.ext = ext;
+    $('img-undo').hidden = false;
+    renderReview(ext, merged);
+
+    var s = extractionSummary(ext);
+    imgStatus('<div class="ai-status-inner done">识别完成：清楚 ' + s.counts.high + ' 项、需留意 ' +
+      s.counts.medium + ' 项、拿不准 ' + s.counts.low + ' 项、没读到 ' + s.counts.none +
+      ' 项。<b>请核对表单里高亮的字段。</b></div>');
+  } catch (e) {
+    imgStatus('<div class="gatebar bad">识别失败，没有改动你的表单。<br><span class="err-detail">' +
+      esc(e.message || String(e)) + '</span></div>');
+  } finally {
+    $('img-run').disabled = false;
+  }
+}
+
+function eachEvalField(fn) {
+  Object.keys(EVAL_IDS).forEach(function (k) {
+    var el = $(EVAL_IDS[k]);
+    if (el) fn(k, el);
+  });
+}
+
+function clearImageMarks() {
+  eachEvalField(function (k, el) {
+    if (!el.closest) return;
+    var f = el.closest('.field');
+    if (f) { f.classList.remove('from-image-field'); f.classList.remove('need-check'); }
+  });
+}
+
+function markFromImage(key, confidence) {
+  var el = $(EVAL_IDS[key]);
+  if (!el || !el.closest) return;
+  var f = el.closest('.field');
+  if (!f) return;
+  f.classList.add('from-image-field');
+  if (confidence !== 'high') f.classList.add('need-check');
+}
+
+var CONF_LABEL = { high: '清楚', medium: '需留意', low: '拿不准', none: '没读到' };
+
+function renderReview(ext, merged) {
+  var rows = EXTRACT_FIELDS.map(function (k) {
+    var c = ext.fields[k];
+    var shown = c.value === null ? '（没读到）' : String(c.value);
+    var prob = c.problem ? '　<span class="cf-problem">' + esc(c.problem) + '</span>' : '';
+    return '<tr class="cf-' + c.confidence + '">' +
+      '<td>' + esc(FIELD_LABELS[k]) + '</td>' +
+      '<td>' + esc(shown) + prob + '</td>' +
+      '<td><span class="conf conf-' + c.confidence + '">' + CONF_LABEL[c.confidence] + '</span></td></tr>';
+  }).join('');
+
+  var conflictHtml = merged.conflicts.length
+    ? '<div class="conflict-warn"><b>有 ' + merged.conflicts.length +
+      ' 个字段你已经填过，识别结果与它不同，现已按识别结果覆盖：</b><ul>' +
+      merged.conflicts.map(function (x) {
+        return '<li>' + esc(x.label) + '：原来「' + esc(x.current) + '」→ 现在「' + esc(x.incoming) + '」</li>';
+      }).join('') + '</ul><p>如果原来的才是对的，改回去即可。</p></div>'
+    : '';
+
+  $('img-review').innerHTML =
+    '<div class="review-card">' +
+      '<h4>识别结果待核对</h4>' +
+      (ext.notes ? '<p class="review-notes">📌 模型提示：' + esc(ext.notes) + '</p>' : '') +
+      conflictHtml +
+      '<table class="tbl review-tbl"><tr><th>字段</th><th>识别到的内容</th><th>可信度</th></tr>' +
+      rows + '</table>' +
+      '<p class="review-tip">已经自动填进上面的表单（蓝色高亮）。<b>标「需留意」和「拿不准」的请逐个核对</b>，' +
+      '尤其是 pH 这类数字——小数点丢掉、4/9 认错都很常见。要改直接在表单里改。</p>' +
+    '</div>';
+}
+
+$('img-file').addEventListener('change', function (ev) {
+  var fs = ev.target.files;
+  for (var i = 0; i < fs.length; i++) {
+    IMG.files.push(fs[i]);
+    IMG.urls.push(URL.createObjectURL(fs[i]));
+  }
+  renderThumbs();
+  imgStatus(IMG.files.length ? '共 ' + IMG.files.length + ' 张。点「识别并填入」开始。' : '');
+  ev.target.value = '';
+});
+
+$('img-thumbs').addEventListener('click', function (ev) {
+  var del = ev.target.closest ? ev.target.closest('[data-del]') : null;
+  if (del) {
+    var di = parseInt(del.dataset.del, 10);
+    // 先释放 objectURL 再删：否则照片虽然从界面上消失了，内存里那份还一直占着
+    if (IMG.urls[di]) URL.revokeObjectURL(IMG.urls[di]);
+    IMG.files.splice(di, 1);
+    IMG.urls.splice(di, 1);
+    renderThumbs();
+    return;
+  }
+  var img = ev.target.closest ? ev.target.closest('img[data-idx]') : null;
+  if (img) { $('lightbox-img').src = img.src; $('lightbox').classList.add('is-open'); }
+});
+
+$('img-run').addEventListener('click', runImageExtract);
+$('img-clear').addEventListener('click', function () {
+  IMG.urls.forEach(function (u) { if (u) URL.revokeObjectURL(u); });
+  IMG.files = []; IMG.urls = []; IMG.ext = null; IMG.snapshot = null;
+  // 灯箱里还留着上一张图的引用，不清掉的话「清空照片」之后图还在
+  $('lightbox-img').removeAttribute('src');
+  $('lightbox').classList.remove('is-open');
+  renderThumbs();
+  imgStatus('');
+  $('img-review').innerHTML = '';
+  $('img-undo').hidden = true;
+  clearImageMarks();
+});
+$('img-undo').addEventListener('click', function () {
+  if (!IMG.snapshot) return;
+  Object.keys(IMG.snapshot).forEach(function (k) {
+    var el = $(EVAL_IDS[k]);
+    if (el) el.value = IMG.snapshot[k];
+  });
+  clearImageMarks();
+  $('img-review').innerHTML = '';
+  $('img-undo').hidden = true;
+  imgStatus('已撤销识别，表单恢复成识别前的样子。');
+});
+$('lightbox').addEventListener('click', function () { $('lightbox').classList.remove('is-open'); });
+
+/* ============================================================
+ * 渲染：专家评价报告
+ * ============================================================ */
+
+function renderEval(r, opts) {
+  opts = opts || {};
+  // 输入非法时内核返回 ok:false、没有 overall。这里必须挡住，
+  // 不能拿一个空壳对象渲染出一份看起来正常的报告。
+  if (!r || r.ok === false || !r.overall) {
+    $('report-body').innerHTML = '<div class="report"><div class="gatebar bad">这份输入还不能评价：' +
+      esc((r && r.reason) || '输入不完整。') + '</div></div>';
+    updateViewToggle();
+    if (!opts.noSwitch) setView('report');
+    return;
+  }
+  var m = r.input.meta || {};
+  var bits = ['pH ' + r.input.ph + '（' + classifyPh(r.input.ph) + '）'];
+  if (m.crop) bits.push(esc(m.crop));
+  if (m.scale) bits.push(esc(m.scale));
+  if (m.texture) bits.push(esc(m.texture));
+  if (m.measurementMethod) bits.push(esc(m.measurementMethod));
+  if (m.samples) bits.push(esc(m.samples) + ' 个采样点');
+
+  /* ---- 一、七维评分：雷达图 + 表 ---- */
+  var scoreRows = r.dims.map(function (d) {
+    return '<tr><td>' + esc(d.name) + '</td><td><span class="pill lv-' + d.level + '">' + d.level +
+      '</span></td><td class="score-cell">' + (scoreOf(d.level) === null ? '—' : scoreOf(d.level)) + '</td></tr>';
+  }).join('');
+  var radarHtml = '<section class="score-block">' +
+    '<h3>一、七维评分</h3>' +
+    '<div class="radar-row">' +
+      '<div class="radar-wrap">' + renderRadarSvg(r.dims) + '</div>' +
+      '<table class="tbl score-tbl"><tr><th>维度</th><th>等级</th><th>分数</th></tr>' + scoreRows + '</table>' +
+    '</div>' +
+    '<p class="radar-note">⚠️ ' + esc(RADAR_NOTE) + '</p>' +
+    '</section>';
+
+  /* ---- 三、逐维度评语 ---- */
+  var dims = r.dims.map(function (d) {
+    return '<div class="dim"><div class="dim-head"><span class="dim-name">' + esc(d.name) +
+      '</span><span class="pill lv-' + d.level + '">' + d.level + '</span></div><p>' +
+      esc(d.comment) + '</p></div>';
+  }).join('');
+
+  var hl = r.highlights.length
+    ? '<ol class="highlights">' + r.highlights.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ol>'
+    : '<p class="hint-empty">方案信息还比较少，暂时找不出可以具体肯定的地方——补上材料和用量后我再看。</p>';
+
+  /* ---- 五、主要问题 ---- */
+  var top = r.issues.slice(0, 3);
+  var issueHtml = top.length
+    ? '<div class="issues">' + top.map(function (it) {
+        var badge = it.source === 'model' ? '<span class="src-model">模型补充</span>' : '';
+        return '<article class="issue ' + it.level + '">' +
+          '<header><span class="sev">' + it.level + '</span><h4>' + esc(it.title) + '</h4>' + badge + '</header>' +
+          '<p>' + esc(it.detail) + '</p>' +
+          '<p class="fix"><b>怎么改：</b>' + esc(it.fix) + '</p>' +
+          (it.ask ? '<p class="ask"><b>想一想：</b>' + esc(it.ask) + '</p>' : '') +
+          '</article>';
+      }).join('') + '</div>'
+    : '<p class="hint-empty">没有发现原理性错误。方案是站得住的，剩下的只是把细节补齐。</p>';
+
+  var spilled = r.issues.slice(3).filter(function (i) { return i.level === 'L3'; });
+  var spilledHtml = spilled.length
+    ? '<p class="foot-note">顺带提醒（不影响总评）：' +
+      spilled.map(function (i) { return esc(i.title + '——' + i.fix); }).join('；') + '</p>'
+    : '';
+
+  /* ---- 六、绿色化学 ---- */
+  var g = r.green;
+  var greenHtml = '<div class="green-box"><h4>绿色化学等级：' + g.level + '</h4>' +
+    (g.did.length ? '<h5>已经做到的</h5><ul>' + g.did.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
+    (g.missed.length ? '<h5>还可以补上的</h5><ul>' + g.missed.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
+    '<p class="anchor-note">课标依据：' + esc(GREEN_ANCHOR) + '</p></div>';
+
+  /* ---- 七、追问 ---- */
+  var asks = r.mustAsk.length
+    ? '<ol class="asks">' + r.mustAsk.map(function (q) { return '<li>' + esc(q) + '</li>'; }).join('') + '</ol>'
+    : '<p class="hint-empty">信息已经比较完整，暂时不需要补充。</p>';
+
+  var when = new Date();
+  var pad = function (n) { return String(n).length < 2 ? '0' + n : String(n); };
+  CURRENT.at = when.getFullYear() + '-' + pad(when.getMonth() + 1) + '-' + pad(when.getDate()) +
+    ' ' + pad(when.getHours()) + ':' + pad(when.getMinutes());
+  CURRENT.result = r;
+  CURRENT.report = r.report || '';
+
+  /* 报告正文。按需求：界面只呈现评价内容本身 ——
+     术语闸门横条、未采纳/未引用统计、AI 横幅、思维链面板一律不显示。 */
+  $('report-body').innerHTML =
+    '<div class="report">' +
+      (opts.fallback ? '<p class="foot-note">' + esc(opts.fallback) + '</p>' : '') +
+      '<div class="verdict g-' + r.overall.grade + '">' +
+        '<div><div class="v-label">总评</div><div class="v-grade">' + r.overall.grade + '</div></div>' +
+        '<div class="v-reason">' + esc(r.overall.reason) +
+          (r.overall.capped ? '<br><b>（存在原理性／安全性问题，已按规则封顶）</b>' : '') + '</div>' +
+      '</div>' +
+      '<p class="meta-line">' + bits.join(' ｜ ') + '</p>' +
+      radarHtml +
+      '<section><h3>二、逐维度评价</h3><div class="dims">' + dims + '</div></section>' +
+      '<section><h3>三、做得好的地方</h3>' + hl + '</section>' +
+      '<section><h3>四、主要问题（按严重程度排序）</h3>' + issueHtml + spilledHtml + '</section>' +
+      '<section><h3>五、绿色化学专项</h3>' + greenHtml + '</section>' +
+      '<section><h3>六、我还需要你回答</h3>' + asks + '</section>' +
+      '<p class="foot-note">本评价的定位是第二意见与追问者，不替代教师评分。</p>' +
+    '</div>';
+
+  updateViewToggle();
+  if (!opts.noSwitch) setView('report');
+}
+
+/** 判定前的输入闸：统一用内核的 validateInput，界面与内核口径不允许分叉 */
+function formGate(form) {
+  var chk = validateInput(form);
+  if (chk.ok) return null;
+  return '<div class="gatebar bad">' +
+    chk.problems.map(function (p) { return '· ' + esc(p.text); }).join('<br>') + '</div>';
+}
+
+function runEval() {
+  var form = readForm('e');
+  form.studentDiagnosis = $('e-diag').value.trim();
+  var bad = formGate(form);
+  if (bad) { evalMsg(bad); return; }
+  evalMsg('');
+  var r = evaluate(form);
+  if (!r.ok) { evalMsg('<div class="gatebar bad">' + esc(r.reason) + '</div>'); return; }
+  renderEval(r);
+}
+/* runEval 现在只被「载入示例」使用：秒出、不耗 token、也不弹设置面板，
+   拿来当示例最合适。真正的「生成专家评价」走下面的 runEvalAI。 */
+
+/* ============================================================
+ * 报告工具条
+ * ============================================================ */
+$('r-print').addEventListener('click', function () { window.print(); });
+$('r-copy').addEventListener('click', function () { copyText(CURRENT.report, this); });
+$('r-dl').addEventListener('click', downloadMarkdown);
+
+function downloadMarkdown() {
+  if (!CURRENT.report) return;
+  var blob = new Blob([CURRENT.report], { type: 'text/markdown;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '土壤改良方案-专家评价单.md';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+}
+
+function copyText(text, btn) {
+  if (!text) return;
+  var done = function () {
+    if (!btn) return;
+    var old = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    setTimeout(function () { btn.textContent = old; }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+
+function fallbackCopy(text, done) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { /* 忽略：复制失败不影响主流程 */ }
+  document.body.removeChild(ta);
+}
+
+/* ============================================================
+ * AI 生成（AI 全自主判定 + 内核守门）
+ * ============================================================ */
+
+var aiBusy = false, aiController = null;
+
+function aiStatus(html) {
+  var el = $('e-ai-status');
+  el.className = 'ai-status no-print';
+  el.innerHTML = html || '';
+}
+
+function setAiBusy(on) {
+  aiBusy = on;
+  var b = $('e-run-ai');
+  b.textContent = on ? '停止' : (b.dataset.label || '生成专家评价');
+  b.classList.toggle('busy', on);
+}
+
+async function runEvalAI() {
+  var form = readForm('e');
+  form.studentDiagnosis = $('e-diag').value.trim();
+
+  var bad = formGate(form);
+  if (bad) { evalMsg(bad); return; }
+
+  // 没填 Key 时不出报告：只把「AI 设置」展开在**当前这一屏**，并说清楚下一步。
+  // 上一版是 open=true 之后紧接着 renderEval → setView('report')：展开的面板
+  // 留在被切走的那一屏上，学生根本看不见，等于没有提示。所以这里绝不切屏。
+  if (!SoilLLM.hasKey()) {
+    $('e-settings').open = true;
+    evalMsg('<div class="gatebar bad">还没填 API Key，所以这次没有评价。<br>' +
+      '上面的「AI 设置」已经展开：把 Key 粘进「API Key」那一栏 → 点「保存到本机」' +
+      '→ 再点一次「生成专家评价」。</div>');
+    return;
+  }
+  evalMsg('');
+
+  aiController = new AbortController();
+  setAiBusy(true);
+
+  var lastReasoning = '';
+  try {
+    /* ---------- 通道 0：识别层 ----------
+     * 先把「学生说了什么」抽成可核验的事实，再交给内核判。
+     * 判定与打分**全部由 AI 做**：七个维度的等级、总评、问题清单，都由模型给。
+     * 内核不比它更聪明，内核的职责是守门：校验取值合法、核验每条问题的原文证据、
+     * 过术语闸门。数据（参考方案）只进提示词当参考，不再是判定依据。 */
+    var r0 = evaluate(form);   // 结构骨架：输入校验 + 追问清单 + 各维「未评」
+    if (!r0.ok) { aiStatus('<div class="gatebar bad">' + esc(r0.reason) + '</div>'); return; }
+
+    var sp = buildScoringPrompt(form, r0);
+    aiStatus('<div class="ai-status-inner running">专家正在读这份方案并打分…</div>');
+    var generated = await SoilLLM.generate({
+      system: sp.system,
+      user: sp.user,
+      signal: aiController.signal,
+      onThinking: function (t) {
+        lastReasoning = t;
+        aiStatus('<div class="ai-status-inner running">专家正在思考…（' + t.length + ' 字）</div>');
+      },
+      onDelta: function (t) {
+        aiStatus('<div class="ai-status-inner running">正在写评价…（已生成 ' + t.length + ' 字）</div>');
+      },
+    });
+
+    var parsedS = parseScoringOutput(generated.text);
+    if (!parsedS.ok) {
+      aiStatus('<div class="gatebar bad">AI 的返回无法解析：' + esc(parsedS.reason) +
+        '。<br>为避免用没核实的分数，本次没有出报告。可以重试。</div>');
+      return;
+    }
+    var scored = verifyScoring(parsedS.data, form);
+    var r = applyScoring(r0, scored);
+
+    // 术语闸门不过 → 打回让 AI 自己判断并重写（只换说法，分数不许变）
+    var autoFixed = 0;
+    if (!r.gate.ok) {
+      aiStatus('<div class="ai-status-inner running">措辞里有超出初三的词，正在让 AI 重写…</div>');
+      var retry = await SoilLLM.generate({
+        system: sp.system,
+        user: sp.user + '\n\n【上一次的输出没有通过检查，请重写】\n' +
+          buildRepairPrompt(r.gate.violations) + '\n注意：七维等级与总评必须保持原样，只换说法。',
+        signal: aiController.signal,
+        onThinking: function (t) { lastReasoning = t; },
+        onDelta: function (t) {
+          aiStatus('<div class="ai-status-inner running">正在重写…（已生成 ' + t.length + ' 字）</div>');
+        },
+      });
+      var p2 = parseScoringOutput(retry.text);
+      if (p2.ok) {
+        var r2 = applyScoring(r0, verifyScoring(p2.data, form));
+        if (r2.gate.ok) { r = r2; generated = retry; }
+      }
+    }
+    if (!r.gate.ok) {
+      // AI 两次都没改干净 → 做确定性兜底替换。
+      // 目的是保证学生读不到超纲词；判断权仍在 AI（是它决定该怎么换）。
+      autoFixed = r.gate.violations.length;
+      r = autoReplaceVisible(r, r.gate.violations);
+    }
+    if (autoFixed) {
+      aiStatus('<div class="gatebar ok">措辞里有 ' + autoFixed +
+        ' 处超出初三的说法，已自动换成更简单的表达（判断与等级未受影响）。</div>');
+    } else {
+      aiStatus('');
+    }
+
+    renderEval(r, { ai: true });
+  } catch (e) {
+    var aborted = e && e.name === 'AbortError';
+    aiStatus('<div class="gatebar bad">' + (aborted ? '已停止生成。' : 'AI 调用失败。') +
+      '本次没有判定结果——七个维度「未评」、总评「未评分」。' +
+      (aborted ? '' : '<br><span class="err-detail">' + esc(e.message || String(e)) + '</span>') + '</div>');
+    // 失败可能发生在识别层，此时 r 还没算出来；补算一次，保证报告照样能看
+    if (!r) r = evaluate(form);
+    renderEval(r, { fallback: aborted ? '已停止生成，本次没有判定结果。' : 'AI 调用失败，本次没有判定结果。' });
+  } finally {
+    setAiBusy(false);
+    aiController = null;
+  }
+}
+
+/* ============================================================
+ * AI 设置
+ * ============================================================ */
+
+function initSettings() {
+  var cfg = SoilLLM.load();
+  $('cfg-base').value = cfg.baseUrl;
+  $('cfg-model').value = cfg.model;
+  $('cfg-key').value = cfg.apiKey;
+  $('cfg-effort').value = cfg.effort;
+  $('cfg-note').textContent = SoilLLM.storageNote();
+  updateAiButton();
+}
+
+function updateAiButton() {
+  var b = $('e-run-ai');
+  var has = SoilLLM.hasKey();
+  b.classList.toggle('needs-key', !has);
+  /* 按钮只有一个了，不能再靠「变虚」提示未配置 —— 主 CTA 必须始终看着能点。
+     状态改由三处承担：按钮文字加后缀、悬停 title、点击后自动展开设置面板。 */
+  b.dataset.label = has ? '生成专家评价' : '生成专家评价（未配置 AI）';
+  if (!aiBusy) b.textContent = b.dataset.label;
+  b.title = has ? '' : '还没填 API Key：点这里会展开「AI 设置」，填好 Key 再生成';
+}
+
+function saveSettings() {
+  SoilLLM.save({
+    baseUrl: $('cfg-base').value,
+    model: $('cfg-model').value,
+    apiKey: $('cfg-key').value,
+    effort: $('cfg-effort').value,
+  });
+  var cfg = SoilLLM.load();
+  $('cfg-base').value = cfg.baseUrl;
+  $('cfg-model').value = cfg.model;
+  $('cfg-note').textContent = '已保存。' + SoilLLM.storageNote();
+  updateAiButton();
+}
+
+function clearSettings() {
+  SoilLLM.clear();
+  $('cfg-key').value = '';
+  $('cfg-note').textContent = '已清除已保存的 Key。' + SoilLLM.storageNote();
+  updateAiButton();
+}
+
+/* ============================================================
+ * 示例与清空
+ * ============================================================ */
+
+var DEMO = {
+  ph: '8.5', diag: '碱性土',
+  plan: '我准备用稀盐酸中和一下，把 pH 降下来。用多一点效果更好，应该能彻底解决。',
+  crop: '棉花', scale: '学校实验田', texture: '壤土', method: 'pH计测土壤浸出液', samples: '3'
+};
+
+function loadDemo() {
+  $('e-ph').value = DEMO.ph;
+  $('e-diag').value = DEMO.diag;
+  $('e-plan').value = DEMO.plan;
+  $('e-crop').value = DEMO.crop;
+  $('e-scale').value = DEMO.scale;
+  $('e-texture').value = DEMO.texture;
+  $('e-method').value = DEMO.method;
+  $('e-samples').value = DEMO.samples;
+  clearImageMarks();
+  runEval();
+}
+
+function clearEval() {
+  ['e-ph', 'e-diag', 'e-plan', 'e-crop'].forEach(function (id) { $(id).value = ''; });
+  ['e-scale', 'e-texture', 'e-method'].forEach(function (id) { $(id).value = ''; });
+  $('e-samples').value = '1';
+  evalMsg('');
+  clearImageMarks();
+}
+
+/* ============================================================
+ * 绑定
+ * ============================================================ */
+/* 生成按钮只有一个（e-run-ai）：内部走 AI，没填 Key 自动回落成规则模式 */
+$('e-run-ai').addEventListener('click', function () {
+  if (aiBusy) { if (aiController) aiController.abort(); return; }
+  runEvalAI();
+});
+$('e-demo').addEventListener('click', loadDemo);
+$('e-clear').addEventListener('click', clearEval);
+/* 学生自评面板已按要求移除；这两个绑定跟着去掉（保留函数本身不报错即可） */
+$('cfg-save').addEventListener('click', saveSettings);
+$('cfg-clear').addEventListener('click', clearSettings);
+
+$('e-quick').addEventListener('click', function (ev) {
+  var b = ev.target.closest('button[data-ph]');
+  if (b) $('e-ph').value = b.dataset.ph;
+});
+
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Escape') $('lightbox').classList.remove('is-open');
+  if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {
+    if (!$('view-input').classList.contains('is-active')) return;
+    /* 和点按钮同一套守卫：生成中再按一次 = 停止 */
+    if (aiBusy) { if (aiController) aiController.abort(); return; }
+    runEvalAI();
+  }
+});
+
+initSettings();
+updateViewToggle();
+
+
+/* ===== 界面动效：ui/theme-motion.js（构建时拼接）===== */
+/* ============================================================
+ * 主题动效引擎（方案 A / B 共用）
+ * ------------------------------------------------------------
+ * 只做三件事，不碰任何业务状态：
+ *   1) 滚动显现 —— 进入视口的区块播放一次淡入上浮
+ *   2) 动态补扫 —— 报告是运行时渲染的，DOM 一变就补标一次
+ *   3) 评分数字滚动 —— .score-cell 里的整数从 0 滚到目标值
+ *
+ * 三条安全底线：
+ *   · IntersectionObserver 不存在 → 整个引擎不启动，页面照常完整可读
+ *   · 用户开了「减弱动态效果」→ 同样不启动
+ *   · 全程 try/catch，动效挂了也不影响判定、渲染、导出任何功能
+ *
+ * CSS 侧的约定：只有带 .rv 类的元素才会被动画，而 .rv 是本脚本加的 ——
+ * 所以脚本没跑起来时，页面上不存在任何"被藏起来的元素"。
+ * ============================================================ */
+(function () {
+  try {
+    var d = document, w = window;
+    if (!d.documentElement || !d.documentElement.classList) return;
+    if (!('IntersectionObserver' in w)) return;
+    if (!('requestAnimationFrame' in w)) return;
+
+    var reduce = false;
+    try { reduce = !!(w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {}
+    if (reduce) return;
+
+    /* 参与显现动画的区块。刻意不含 .ai-status 内部的东西 ——
+       AI 流式输出时那里每帧都在重写，动画会闪。
+       注意：只列**现在真的会渲染出来**的区块；已随「专家的话」整屏移除的那几个
+       组件类不要再写进来（选择器匹配不到，只是死代码）。 */
+    var TARGET = '.card,.dim,.issue,.green-box,.verdict,' +
+                 '.score-block,.settings,.review-card,.chk,.risk-box,.ready-box,' +
+                 '.gatebar,.conflict-warn,.upload-card,.report-toolbar';
+
+    d.documentElement.classList.add('rv-init');
+
+    var io = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var en = entries[i];
+        if (!en.isIntersecting) continue;
+        en.target.classList.add('is-inview');
+        if (en.target.classList.contains('score-block')) countUp(en.target);
+        io.unobserve(en.target);          // 只播一次
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
+
+    function scan() {
+      var els = d.querySelectorAll(TARGET);
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.classList.contains('rv')) continue;
+        if (el.closest && el.closest('.ai-status')) continue;
+        el.classList.add('rv');
+        /* 同一父元素内的兄弟按序错开，形成级联；封顶 7 档避免长列表拖沓 */
+        var idx = 0, n = el.parentElement ? el.parentElement.firstElementChild : null;
+        while (n && n !== el) {
+          if (n.classList && n.classList.contains('rv')) idx++;
+          n = n.nextElementSibling;
+        }
+        el.style.setProperty('--d', Math.min(idx, 7) * 55 + 'ms');
+        io.observe(el);
+      }
+    }
+
+    /* 数字滚动：只认 0–999 的纯整数，"—" / 「未评」原样不动 */
+    function countUp(block) {
+      var cells = block.querySelectorAll('.score-cell');
+      for (var i = 0; i < cells.length; i++) {
+        (function (cell) {
+          var raw = (cell.textContent || '').trim();
+          if (!/^\d{1,3}$/.test(raw)) return;
+          var target = parseInt(raw, 10);
+          if (target <= 0) return;              // 0 分滚个寂寞，直接显示
+          var t0 = null, DUR = 720;
+          var step = function (ts) {
+            if (t0 === null) t0 = ts;
+            var k = Math.min(1, (ts - t0) / DUR);
+            var e = 1 - Math.pow(1 - k, 3);     // easeOutCubic
+            cell.textContent = String(Math.round(target * e));
+            if (k < 1) w.requestAnimationFrame(step);
+          };
+          w.requestAnimationFrame(step);
+        })(cells[i]);
+      }
+    }
+
+    /* 报告 / 状态条都是运行时渲染的，DOM 一变就补扫（rAF 去抖） */
+    var pending = false;
+    function schedule() {
+      if (pending) return;
+      pending = true;
+      w.requestAnimationFrame(function () { pending = false; scan(); });
+    }
+    if ('MutationObserver' in w) {
+      new MutationObserver(schedule).observe(d.body, { childList: true, subtree: true });
+    }
+
+    scan();
+  } catch (e) { /* 动效失败不影响任何功能 */ }
+})();
+
+</script>
+</body>
+</html>
